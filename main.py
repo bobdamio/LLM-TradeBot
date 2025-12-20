@@ -49,6 +49,10 @@ from src.agents import (
     PositionInfo,
     SignalWeight
 )
+import threading
+import uvicorn
+from src.server.app import app
+from src.server.state import global_state
 
 class MultiAgentTradingBot:
     """
@@ -126,11 +130,17 @@ class MultiAgentTradingBot:
         print(f"  - 止损: {self.stop_loss_pct}%")
         print(f"  - 止盈: {self.take_profit_pct}%")
         print(f"  - 测试模式: {'✅ 是' if self.test_mode else '❌ 否'}")
+        
+        # ✅ Load initial trade history
+        recent_trades = self.saver.get_recent_trades(limit=20)
+        global_state.trade_history = recent_trades
+        print(f"  📜 已加载 {len(recent_trades)} 条历史交易记录")
     
+
+
     async def run_trading_cycle(self) -> Dict:
         """
         执行完整的交易循环（异步版本）
-        
         Returns:
             {
                 'status': 'success/failed/hold/blocked',
@@ -142,14 +152,21 @@ class MultiAgentTradingBot:
         print(f"🔄 启动交易审计循环 | {datetime.now().strftime('%H:%M:%S')} | {self.symbol}")
         print(f"{'='*80}")
         
+        # Update Dashboard Status
+        global_state.is_running = True
+        global_state.add_log(f"Starting trading cycle for {self.symbol}")
+        
         try:
             # ✅ Generate snapshot_id for this cycle
             snapshot_id = f"snap_{int(time.time())}"
 
             # Step 1: 采样 - 数据先知 (The Oracle)
             print("\n[Step 1/4] 🕵️ 数据先知 (The Oracle) - 异步数据采集...")
+            global_state.add_log("[Oracle] Fetching market data (5m/15m/1h)...")
+            global_state.oracle_status = "Fetching Data..." 
             market_snapshot = await self.data_sync_agent.fetch_all_timeframes(self.symbol)
-            
+            global_state.oracle_status = "Data Ready"
+
             # ✅ Save Market Data & Process Indicators
             processed_dfs = {}
             for tf in ['5m', '15m', '1h']:
@@ -177,15 +194,24 @@ class MultiAgentTradingBot:
             current_price = market_snapshot.live_5m.get('close')
             print(f"  ✅ 采样完毕: ${current_price:,.2f} ({market_snapshot.timestamp.strftime('%H:%M:%S')})")
             
+            # Update Dashboard Market Data (Initial)
+            global_state.current_price = current_price
+            
             # Step 2: 假设 - 量化策略师 (The Strategist)
             print("[Step 2/4] 👨‍🔬 量化策略师 (The Strategist) - 评估数据中...")
+            global_state.add_log("[Strategist] Analyzing trends & indicators...")
             quant_analysis = await self.quant_analyst.analyze_all_timeframes(market_snapshot)
+            
+            # Update Dashboard Strategist Score
+            s_score = quant_analysis['comprehensive']['score']
+            global_state.strategist_score = s_score
             
             # ✅ Save Quant Analysis (Analytics)
             self.saver.save_context(quant_analysis, self.symbol, 'analytics', snapshot_id)
             
             # Step 3: 对抗 - 对抗评论员 (The Critic)
             print("[Step 3/4] ⚖️ 对抗评论员 (The Critic) - 极速审理信号...")
+            global_state.add_log("[Critic] Reviewing signals & voting...")
             # ✅ 复用 Step 1 已处理的数据，避免第三次计算
             market_data = {
                 'df_5m': processed_dfs['5m'],
@@ -199,7 +225,8 @@ class MultiAgentTradingBot:
                 market_data=market_data
             )
             
-            # ✅ Save Decision
+            # ✅ Decision Recording moved after Risk Audit for complete context
+            # Saved to file still happens here for "raw" decision
             self.saver.save_decision(asdict(vote_result), self.symbol, snapshot_id)
             
             # ✅ Generate and Save LLM Context (LLM Logs)
@@ -214,9 +241,27 @@ class MultiAgentTradingBot:
                 snapshot_id=snapshot_id
             )
             
-            # 如果是观望，直接返回
+
+            # 如果是观望，也需要更新状态
             if vote_result.action == 'hold':
                 print("\n✅ 决策: 观望")
+                global_state.add_log(f"Decision: HOLD ({vote_result.reason})")
+                
+                # Update State with HOLD decision
+                decision_dict = asdict(vote_result)
+                decision_dict['symbol'] = self.symbol
+                # Add implicit safe risk for Hold
+                decision_dict['risk_level'] = 'safe'
+                decision_dict['guardian_passed'] = True
+                
+                # Update Market Context
+                if vote_result.regime:
+                    global_state.market_regime = vote_result.regime.get('regime', 'Unknown')
+                if vote_result.position:
+                    global_state.price_position = f"{vote_result.position.get('position_pct', 0):.1f}% ({vote_result.position.get('location', 'Unknown')})"
+                    
+                global_state.update_decision(decision_dict)
+
                 return {
                     'status': 'hold',
                     'action': 'hold',
@@ -228,6 +273,9 @@ class MultiAgentTradingBot:
             
             # Step 4: 审计 - 风控守护者 (The Guardian)
             print(f"[Step 4/4] 👮 风控守护者 (The Guardian) - 进行终审...")
+            global_state.add_log("[Guardian] Auditing decision for risk...")
+            global_state.guardian_status = "Auditing..."
+            
             order_params = self._build_order_params(
                 action=vote_result.action,
                 current_price=current_price,
@@ -249,7 +297,29 @@ class MultiAgentTradingBot:
             # Step 5 (Embedded in Step 4 for clean output)
             
             # 获取账户信息
-            account_balance = self._get_account_balance()
+            # Using _get_full_account_info helper (we will create it or inline logic)
+            # Fetch directly from client to get full details
+            try:
+                acc_info = self.client.get_futures_account()
+                # acc_info keys: 'totalWalletBalance', 'totalUnrealizedProfit', 'availableBalance', etc.
+                wallet_bal = float(acc_info.get('totalWalletBalance', 0))
+                unrealized_pnl = float(acc_info.get('totalUnrealizedProfit', 0))
+                avail_bal = float(acc_info.get('availableBalance', 0))
+                total_equity = wallet_bal + unrealized_pnl
+                
+                # Update State
+                global_state.update_account(
+                    equity=total_equity,
+                    available=avail_bal,
+                    wallet=wallet_bal,
+                    pnl=unrealized_pnl
+                )
+                
+                account_balance = avail_bal # For backward compatibility with audit
+            except Exception as e:
+                log.error(f"Failed to fetch account info: {e}")
+                account_balance = 0.0
+
             current_position = self._get_current_position()
             
             # 执行审计
@@ -259,6 +329,28 @@ class MultiAgentTradingBot:
                 account_balance=account_balance,
                 current_price=current_price
             )
+            
+            # Update Dashboard Guardian Status
+            global_state.guardian_status = "PASSED" if audit_result.passed else "BLOCKED"
+            if not audit_result.passed:
+                 global_state.add_log(f"Risk Block: {audit_result.blocked_reason}")
+            
+            # ✅ Update Global State with FULL Decision info (Vote + Audit)
+            decision_dict = asdict(vote_result)
+            decision_dict['symbol'] = self.symbol
+            
+            # Inject Risk Data
+            decision_dict['risk_level'] = audit_result.risk_level.value
+            decision_dict['guardian_passed'] = audit_result.passed
+            decision_dict['guardian_reason'] = audit_result.blocked_reason
+            
+            # Update Market Context
+            if vote_result.regime:
+                global_state.market_regime = vote_result.regime.get('regime', 'Unknown')
+            if vote_result.position:
+                global_state.price_position = f"{vote_result.position.get('position_pct', 0):.1f}% ({vote_result.position.get('location', 'Unknown')})"
+                
+            global_state.update_decision(decision_dict)
             
             # ✅ Save Risk Audit Report
             from dataclasses import asdict as dc_asdict
@@ -306,6 +398,7 @@ class MultiAgentTradingBot:
             if self.test_mode:
                 print("\n[Step 5/5] 🧪 TestMode - 模拟执行...")
                 print(f"  模拟订单: {order_params['action']} {order_params['quantity']} @ {current_price}")
+                global_state.add_log(f"Simulating Order: {order_params['action']} {order_params['quantity']}")
                 
                  # ✅ Save Execution (Simulated)
                 self.saver.save_execution({
@@ -317,7 +410,7 @@ class MultiAgentTradingBot:
                 }, self.symbol)
                 
                 # ✅ Save Trade in persistent history
-                self.saver.save_trade({
+                trade_record = {
                     'action': order_params['action'].upper(),
                     'symbol': self.symbol,
                     'price': current_price,
@@ -327,7 +420,13 @@ class MultiAgentTradingBot:
                     'pnl': 0,
                     'confidence': order_params['confidence'],
                     'status': 'SIMULATED'
-                })
+                }
+                self.saver.save_trade(trade_record)
+                
+                # Update Global State History
+                global_state.trade_history.insert(0, trade_record)
+                if len(global_state.trade_history) > 50:
+                    global_state.trade_history.pop()
                 
                 return {
                     'status': 'success',
@@ -336,6 +435,7 @@ class MultiAgentTradingBot:
                 }
             
             print("\n[Step 5/5] 🚀 ExecutionEngine - 正在执行...")
+            global_state.add_log(f"Executing Order: {order_params['action']} {order_params['quantity']}")
             executed = self._execute_order(order_params)
             
             # ✅ Save Execution
@@ -349,6 +449,7 @@ class MultiAgentTradingBot:
             
             if executed:
                 print("  ✅ 订单执行成功!")
+                global_state.add_log(f"Order Executed Successfully")
                 
                 # 记录交易日志
                 trade_logger.log_open_position(
@@ -379,7 +480,7 @@ class MultiAgentTradingBot:
                     pnl = (exit_price - entry_price) * current_position.quantity * direction
                 
                 # ✅ Save Trade in persistent history
-                self.saver.save_trade({
+                trade_record = {
                     'action': order_params['action'].upper(),
                     'symbol': self.symbol,
                     'price': entry_price,
@@ -389,7 +490,13 @@ class MultiAgentTradingBot:
                     'pnl': pnl,
                     'confidence': order_params['confidence'],
                     'status': 'EXECUTED'
-                })
+                }
+                self.saver.save_trade(trade_record)
+                
+                # Update Global State History
+                global_state.trade_history.insert(0, trade_record)
+                if len(global_state.trade_history) > 50:
+                    global_state.trade_history.pop()
                 
                 return {
                     'status': 'success',
@@ -398,6 +505,7 @@ class MultiAgentTradingBot:
                 }
             else:
                 print("  ❌ 订单执行失败")
+                global_state.add_log(f"Order Execution Failed")
                 return {
                     'status': 'failed',
                     'action': vote_result.action,
@@ -406,6 +514,7 @@ class MultiAgentTradingBot:
         
         except Exception as e:
             log.error(f"计交易循环异常: {e}", exc_info=True)
+            global_state.add_log(f"Error: {e}")
             return {
                 'status': 'error',
                 'details': {'error': str(e)}
@@ -557,28 +666,6 @@ class MultiAgentTradingBot:
             print(row)
         print("─"*100)
     
-    def run_continuous(self, interval_minutes: int = 5):
-        """
-        持续运行交易机器人
-        
-        Args:
-            interval_minutes: 检查间隔（分钟）
-        """
-        print(f"\n🔄 开始持续运行模式，间隔 {interval_minutes} 分钟...")
-        
-        try:
-            while True:
-                result = self.run_once()
-                
-                print(f"\n循环结果: {result['status']}")
-                
-                # 等待下一次检查
-                print(f"\n⏳ 等待 {interval_minutes} 分钟...")
-                time.sleep(interval_minutes * 60)
-                
-        except KeyboardInterrupt:
-            print(f"\n\n⚠️  收到停止信号，退出...")
-    
     def get_statistics(self) -> Dict:
         """获取统计信息"""
         return {
@@ -586,6 +673,119 @@ class MultiAgentTradingBot:
             'risk_audit': self.risk_audit.get_audit_report(),
         }
 
+    def start_account_monitor(self):
+        """Start a background thread to monitor account equity in real-time"""
+        def _monitor():
+            log.info("💰 Account Monitor Thread Started")
+            while True:
+                # Check Control State
+                if global_state.execution_mode == "Stopped":
+                    break
+                
+                # We update even if Paused, to see PnL of open positions
+                try:
+                    acc = self.client.get_futures_account()
+                    
+                    wallet = float(acc.get('total_wallet_balance', 0))
+                    pnl = float(acc.get('total_unrealized_profit', 0))
+                    avail = float(acc.get('available_balance', 0))
+                    equity = wallet + pnl
+                    
+                    global_state.update_account(equity, avail, wallet, pnl)
+                except Exception as e:
+                    log.error(f"Account Monitor Error: {e}")
+                    time.sleep(5) # Backoff on error
+                
+                time.sleep(3) # Update every 3 seconds
+
+        t = threading.Thread(target=_monitor, daemon=True)
+        t.start()
+
+    def run_continuous(self, interval_minutes: int = 5):
+        """
+        持续运行模式
+        
+        Args:
+            interval_minutes: 运行间隔（分钟）
+        """
+        log.info(f"🚀 启动持续运行模式 (间隔: {interval_minutes}分钟)")
+        global_state.is_running = True
+        
+        # ✅ Hook Logger to Global State (Push logs to Dashboard)
+        # We use a wrapper to ensure we catch formatting
+        def dashboard_sink(message):
+            # message is a record object
+            record = message.record
+            msg_content = record["message"]
+            
+            # Filter out empty or duplicate if needed, but let's just push unique
+            if msg_content:
+                # Add [Component] tag if extra context exists
+                # But simple is better: just the message
+                global_state.add_log(msg_content)
+
+        # Add sink with strict format
+        try:
+            log.remove() # Remove default to avoid double printing if any
+            log.add(sys.stderr, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
+            log.add(dashboard_sink, format="{message}", level="INFO")
+            log.info("📊 Dashboard Logger Attached Successfully")
+        except Exception as e:
+            print(f"Failed to attach dashboard logger: {e}")
+
+        # Start Real-time Monitors
+        self.start_account_monitor()
+        
+        try:
+            while True:
+                # Check Control State
+                current_mode = global_state.execution_mode
+                
+                if current_mode == "Stopped":
+                    print(f"\n🛑 系统已停止 (User Command)")
+                    break
+                    
+                if current_mode == "Paused":
+                    # Only print once or periodically
+                    if int(time.time()) % 30 == 0:
+                        print(f"\n⏸️ 系统已暂停... Waiting for resume command.")
+                    time.sleep(1)
+                    continue
+
+                # Normal Execution
+                # Use asyncio.run for the async cycle
+                result = asyncio.run(self.run_trading_cycle())
+                
+                print(f"\n循环结果: {result['status']}")
+                
+                # 等待下一次检查
+                print(f"\n⏳ 等待 {interval_minutes} 分钟...")
+                
+                # Sleep in chunks to allow responsive PAUSE/STOP
+                # Check every 1 second during the wait interval
+                wait_seconds = interval_minutes * 60
+                for i in range(wait_seconds):
+                    if global_state.execution_mode != "Running":
+                        break
+                    
+                    # Heartbeat every 60s
+                    if i > 0 and i % 60 == 0:
+                        remaining = int((wait_seconds - i) / 60)
+                        if remaining > 0:
+                             print(f"⏳ Next cycle in {remaining}m...")
+                             # Optional: add a quiet log or just keep alive
+                             # global_state.add_log(f"Waiting next cycle... ({remaining}m)")
+
+                    time.sleep(1)
+                
+        except KeyboardInterrupt:
+            print(f"\n\n⚠️  收到停止信号，退出...")
+            global_state.is_running = False
+
+def start_server():
+    """Start FastAPI server in a separate thread"""
+    print("\n🌍 Starting Web Dashboard at http://localhost:8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="error")
 
 # ============================================
 # 主入口
@@ -614,6 +814,13 @@ def main():
         test_mode=args.test
     )
     
+    # 启动 Dashboard Server (Only if in continuous mode or if explicitly requested, but let's do it always for now if deps exist)
+    try:
+        server_thread = threading.Thread(target=start_server, daemon=True)
+        server_thread.start()
+    except Exception as e:
+        print(f"⚠️ Failed to start Dashboard: {e}")
+    
     # 运行
     if args.mode == 'once':
         result = bot.run_once()
@@ -623,9 +830,12 @@ def main():
         stats = bot.get_statistics()
         print(f"\n统计信息:")
         print(json.dumps(stats, indent=2))
+        
+        # Keep alive briefly for server to be reachable if desired, 
+        # or exit immediately. Usually 'once' implies run and exit.
+        
     else:
         bot.run_continuous(interval_minutes=args.interval)
-
 
 if __name__ == '__main__':
     main()

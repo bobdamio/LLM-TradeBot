@@ -111,6 +111,17 @@ class DecisionCoreAgent:
             'sentiment': sentiment_data.get('total_sentiment_score', 0)
         }
         
+        w_sentiment = 0.3 if scores.get('sentiment') != 0 else 0
+        w_others = 1.0 - w_sentiment
+
+        # Calculate vote details early for visibility
+        vote_details = {
+            key: scores[key] * getattr(self.weights, key, 1.0) * (w_others if key != 'sentiment' else 1.0)
+            for key in scores.keys()
+        }
+        # Add total strategist score for display (not used in weighted calc)
+        vote_details['strategist_total'] = quant_analysis.get('comprehensive', {}).get('total_score', 0)
+
         # 2. 市场状态与位置分析
         regime = None
         position = None
@@ -129,7 +140,7 @@ class DecisionCoreAgent:
                     action='hold',
                     confidence=10.0,
                     weighted_score=0,
-                    vote_details={},
+                    vote_details=vote_details,  # Include details even if filtered
                     multi_period_aligned=False,
                     reason=f"对抗式过滤: 震荡市且价格处于区间中部({position['position_pct']:.1f}%)，禁止开仓",
                     regime=regime,
@@ -139,9 +150,6 @@ class DecisionCoreAgent:
                 return result
 
         # 4. 加权计算（得分范围-100~+100）
-        # 动态权重：如果存在情绪得分，分配 30% 权重给情绪
-        w_sentiment = 0.3 if scores.get('sentiment') != 0 else 0
-        w_others = 1.0 - w_sentiment
         
         weighted_score = (
             (scores['trend_5m'] * self.weights.trend_5m +

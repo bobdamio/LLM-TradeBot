@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM-TradeBot Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css?v=12">
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="glass-panel header">
+            <div class="logo">
+                <span class="icon">🤖</span>
+                <h1>LLM-TradeBot: Adversarial Decision Framework <a href="https://github.com/EthanAlgoX/LLM-TradeBot"
+                        target="_blank"
+                        style="color: var(--neon-blue); text-decoration: none; font-size: 0.65em;">https://github.com/EthanAlgoX/LLM-TradeBot</a>
+                </h1>
+            </div>
+            <div class="status-indicators">
+                <div class="controls">
+                    <button id="btn-start" class="btn-control start" title="Start Trading">▶</button>
+                    <button id="btn-pause" class="btn-control pause" title="Pause Trading">⏸</button>
+                    <button id="btn-stop" class="btn-control stop" title="Stop System">⏹</button>
+                </div>
+                <div class="status-item">
+                    <span class="label">MODE</span>
+                    <span id="sys-mode" class="value badge">LOADING</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">EQUITY</span>
+                    <span id="header-equity" class="value">$0.00</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <main class="dashboard-grid">
+
+            <!-- Row 1: K-Line + Net Value -->
+            <section class="row-charts">
+                <!-- K-Line -->
+                <div class="glass-panel card kline-card">
+                    <div class="chart-header">
+                        <h2>📉 BTCUSDT Real-time K-Line</h2>
+                    </div>
+                    <div class="kline-container-wrapper">
+                        <div class="tradingview-widget-container">
+                            <div id="tradingview_b8265"></div>
+                            <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+                            <script type="text/javascript">
+                                new TradingView.widget(
+                                    {
+                                        "width": "100%",
+                                        "height": "100%",
+                                        "symbol": "BINANCE:BTCUSDT",
+                                        "interval": "1",
+                                        "timezone": "Asia/Shanghai",
+                                        "theme": "dark",
+                                        "style": "1",
+                                        "locale": "zh_CN",
+                                        "toolbar_bg": "#f1f3f6",
+                                        "enable_publishing": false,
+                                        "hide_top_toolbar": true,
+                                        "save_image": false,
+                                        "container_id": "tradingview_b8265"
+                                    }
+                                );
+                            </script>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Net Value -->
+                <div class="glass-panel card chart-composite-card">
+                    <div class="chart-header">
+                        <h2>📈 Net Value Curve</h2>
+                        <div class="header-metrics">
+                            <div class="h-metric">
+                                <span class="label">Total Equity</span>
+                                <span id="acc-equity" class="val">$0.00</span>
+                            </div>
+                            <div class="h-metric">
+                                <span class="label">Wallet</span>
+                                <span id="acc-wallet" class="val">$0.00</span>
+                            </div>
+                            <div class="h-metric">
+                                <span class="label">PnL</span>
+                                <span id="acc-pnl" class="val neutral">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chart-container-lg">
+                        <canvas id="equityChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Row 2: Decisions + Trade History -->
+            <section class="row-tables">
+                <!-- Decisions -->
+                <div class="glass-panel card decision-table-card">
+                    <h2>📋 Recent Decisions</h2>
+                    <div class="table-container">
+                        <table id="decision-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Symbol</th>
+                                    <th>Result</th>
+                                    <th>Conf</th>
+                                    <th>Strat</th>
+                                    <th>Trend</th>
+                                    <th>Osc</th>
+                                    <th>Sent</th>
+                                    <th>Risk</th>
+                                    <th>Guard</th>
+                                    <th>Context</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- JS Populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Trade History -->
+                <div class="glass-panel card trade-table-card">
+                    <h2>📜 Trade History</h2>
+                    <div class="table-container">
+                        <table id="trade-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Symbol</th>
+                                    <th>Action</th>
+                                    <th>Price</th>
+                                    <th>Cost</th>
+                                    <th>Exit</th>
+                                    <th>PnL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- JS Populated -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Row 3: Logs (Full Width) -->
+            <section class="row-logs">
+                <div class="glass-panel card compound-card">
+                    <div class="compound-header">
+                        <h2>📡 Live Log Output</h2>
+                    </div>
+                    <div class="compound-body">
+                        <div id="logs-container" class="logs-scroll">
+                            <!-- JS Populated -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

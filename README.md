@@ -58,15 +58,28 @@ cp config.example.yaml config.yaml
 - 杠杆倍数 (leverage)
 - 止损止盈比例 (stop_loss_pct, take_profit_pct)
 
-#### 4. 运行交易程序
+#### 4. 启动 Web 仪表盘 (推荐)
+
+![Dashboard Preview](./docs/dashboard_preview_new.png)
+
+本项目内置现代化的实时监控仪表盘 (Web Dashboard)。
 
 ```bash
-# 测试模式 (模拟执行，推荐首次使用)
-python main.py --test --mode continuous
-
-# 实盘模式 (谨慎运行！)
+# 启动主程序 (自动开启 Web 服务)
 python main.py --mode continuous
 ```
+
+启动后,请在浏览器访问: **<http://localhost:8000>**
+
+**仪表盘功能**:
+
+- **📉 实时 K 线**: 集成 TradingView 组件，1分钟级实时刷新
+- **📈 净值曲线**: 实时账户权益变化追踪
+- **📋 决策审计**: 完整的历史决策记录，包含 Agents 详细评分 (Strategist, Trend, Oscillator, Sentiment)
+- **📜 交易历史**: 所有交易记录及盈亏统计
+- **📡 Live Log Output**: 实时滚动日志，支持 Agent 标签高亮显示 (Oracle, Strategist, Critic, Guardian)，500行容量历史回溯
+
+![Live Log Output](./docs/screenshot-20251221-070754.png)
 
 ---
 
