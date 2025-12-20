@@ -144,9 +144,9 @@ LLM-TradeBot/
 
 ### 对抗式 Multi-Agent 协作流程
 
-1. **🕵️ DataSyncAgent**: 异步并发获取多周期 (5m, 15m, 1h) K线数据，确保计算快照的一致性。
-2. **👨‍🔬 QuantAnalystAgent**: 负责基础信号提取，输出原始的趋势和震荡分值。
-3. **⚖️ DecisionCoreAgent**: **核心对抗层**。集成位置感知和状态检测，根据市场环境对量化信号进行“洗礼”，输出高质决策。
+1. **🕵️ DataSyncAgent**: 异步并发获取多周期 (5m, 15m, 1h) K线及外部量化数据 (Netflow, Long/Short Ratio)，确保计算快照的一致性。
+2. **👨‍🔬 QuantAnalystAgent**: 负责多维度信号提取。内部集成 3 个子 Agent（趋势、震荡、情绪），结合原生指标与外部量化数据输出综合分值。
+3. **⚖️ DecisionCoreAgent**: **核心对抗层**。集成位置感知、状态检测及 6 信号源加权投票机制，根据市场环境对量化信号进行“洗礼”，输出高质决策。
 4. **🛡️ RiskAuditAgent**: **安全终审官**。对 DecisionCore 的输出进行物理隔离审计，确保风险敞口和 R/R 符合对抗要求。
 5. **🚀 ExecutionEngine**: 负责交易信号的最后 100 毫秒执行及全生命周期订单追踪。
 
@@ -158,7 +158,7 @@ LLM-TradeBot/
 
 ![数据流转架构](./docs/data_flow_diagram_1766231460411.png)
 
-> 📖 **详细文档**: 查看 [数据流转分析文档](./docs/data_flow_analysis.md) 了解完整的数据流转机制和技术细节。
+> 📖 **详细文档**: 查看 [数据流转分析文档](./docs/data_flow_analysis.md) 了解完整的数据流转机制，或查看 [多Agent技术详解](./README_MULTI_AGENT.md) 了解底层实现细节。
 
 ---
 
