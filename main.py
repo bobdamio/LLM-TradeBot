@@ -172,12 +172,23 @@ class MultiAgentTradingBot:
             print("\n[Step 2/5] 👨‍🔬 QuantAnalystAgent - 量化分析...")
             quant_analysis = await self.quant_analyst.analyze_all_timeframes(market_snapshot)
             
-            # ✅ Save Quant Analysis Context
-            self.saver.save_context(quant_analysis, self.symbol, 'quant_analysis', snapshot_id)
+            # ✅ Save Quant Analysis (Analytics)
+            self.saver.save_context(quant_analysis, self.symbol, 'analytics', snapshot_id)
             
             # Step 3: 决策中枢
             print("\n[Step 3/5] ⚖️ DecisionCoreAgent - 加权投票决策...")
-            vote_result = await self.decision_core.make_decision(quant_analysis)
+            # 准备增强市场数据
+            market_data = {
+                'df_5m': df_with_indicators if tf == '5m' else self.processor.process_klines(market_snapshot.raw_5m, self.symbol, '5m'),
+                'df_15m': self.processor.process_klines(market_snapshot.raw_15m, self.symbol, '15m'),
+                'df_1h': self.processor.process_klines(market_snapshot.raw_1h, self.symbol, '1h'),
+                'current_price': current_price
+            }
+            
+            vote_result = await self.decision_core.make_decision(
+                quant_analysis,
+                market_data=market_data
+            )
             
             # ✅ Save Decision
             self.saver.save_decision(asdict(vote_result), self.symbol, snapshot_id)
@@ -193,12 +204,6 @@ class MultiAgentTradingBot:
                 symbol=self.symbol,
                 snapshot_id=snapshot_id
             )
-            
-            print(f"  ✅ 决策动作: {vote_result.action}")
-            print(f"  ✅ 置信度: {vote_result.confidence:.2%}")
-            print(f"  ✅ 加权得分: {vote_result.weighted_score:.1f}")
-            print(f"  ✅ 周期对齐: {'是' if vote_result.multi_period_aligned else '否'}")
-            print(f"  ✅ 决策原因: {vote_result.reason}")
             
             # 如果是观望，直接返回
             if vote_result.action == 'hold':
@@ -220,12 +225,26 @@ class MultiAgentTradingBot:
                 confidence=vote_result.confidence
             )
             
+            print(f"  ✅ 决策动作: {vote_result.action}")
+            print(f"  ✅ 置信度: {vote_result.confidence:.1f}%")
+            print(f"  ✅ 加权得分: {vote_result.weighted_score:.1f}")
+            print(f"  ✅ 周期对齐: {'是' if vote_result.multi_period_aligned else '否'}")
+            print(f"  ✅ 决策原因: {vote_result.reason}")
+            if vote_result.regime:
+                print(f"  📊 市场状态: {vote_result.regime['regime']} (ADX: {vote_result.regime['adx']:.1f})")
+            if vote_result.position:
+                print(f"  📍 价格位置: {vote_result.position['position_pct']:.1f}% ({vote_result.position['location']})")
             print(f"  ✅ 动作: {order_params['action']}")
             print(f"  ✅ 入场价: ${order_params['entry_price']:,.2f}")
             print(f"  ✅ 止损价: ${order_params['stop_loss']:,.2f}")
             print(f"  ✅ 止盈价: ${order_params['take_profit']:,.2f}")
             print(f"  ✅ 数量: {order_params['quantity']:.4f} {self.symbol.replace('USDT', '')}")
             print(f"  ✅ 杠杆: {order_params['leverage']}x")
+            
+            # 将对抗式上下文注入订单参数，以便风控审计使用
+            order_params['regime'] = vote_result.regime
+            order_params['position'] = vote_result.position
+            order_params['confidence'] = vote_result.confidence
             
             # Step 5: 风控审计
             print(f"\n[Step 5/5] 👮 RiskAuditAgent - 风控审计...")
@@ -240,6 +259,21 @@ class MultiAgentTradingBot:
                 current_position=current_position,
                 account_balance=account_balance,
                 current_price=current_price
+            )
+            
+            # ✅ Save Risk Audit Report
+            from dataclasses import asdict as dc_asdict
+            self.saver.save_risk_audit(
+                audit_result={
+                    'passed': audit_result.passed,
+                    'risk_level': audit_result.risk_level.value,
+                    'blocked_reason': audit_result.blocked_reason,
+                    'corrections': audit_result.corrections,
+                    'warnings': audit_result.warnings,
+                    'order_params': order_params
+                },
+                symbol=self.symbol,
+                snapshot_id=snapshot_id
             )
             
             print(f"  ✅ 审计结果: {'✅ 通过' if audit_result.passed else '❌ 拦截'}")

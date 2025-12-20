@@ -14,10 +14,14 @@ Date: 2025-12-19
 """
 
 import asyncio
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from datetime import datetime
 import json
+
+from src.utils.logger import log
+from src.agents.position_analyzer import PositionAnalyzer
+from src.agents.regime_detector import RegimeDetector
 
 
 @dataclass
@@ -42,17 +46,18 @@ class VoteResult:
     vote_details: Dict[str, float]  # 各信号的贡献分
     multi_period_aligned: bool  # 多周期是否一致
     reason: str  # 决策原因
+    regime: Optional[Dict] = None      # 市场状态信息
+    position: Optional[Dict] = None    # 价格位置信息
 
 
 class DecisionCoreAgent:
-    """
-    ⚖️ 决策中枢 Agent
+    """⚖️ 决策中枢 Agent
     
     核心功能:
     - 加权投票: 根据可配置权重整合多个信号
     - 多周期对齐: 检测多周期趋势一致性
-    - 自适应权重: 根据历史胜率调整信号权重（可选）
-    - LLM增强: 将量化信号作为上下文传递给DeepSeek
+    - 市场感知: 集成位置感知和状态检测
+    - 信心增强: 基于市场状态和价格位置校准信心度
     """
     
     def __init__(self, weights: Optional[SignalWeight] = None):
@@ -64,6 +69,11 @@ class DecisionCoreAgent:
         """
         self.weights = weights or SignalWeight()
         self.history: List[VoteResult] = []  # 历史决策记录
+        
+        # 初始化辅助分析器
+        self.position_analyzer = PositionAnalyzer()
+        self.regime_detector = RegimeDetector()
+        
         self.performance_tracker = {
             'trend_5m': {'total': 0, 'correct': 0},
             'trend_15m': {'total': 0, 'correct': 0},
@@ -73,21 +83,13 @@ class DecisionCoreAgent:
             'oscillator_1h': {'total': 0, 'correct': 0},
         }
         
-    async def make_decision(self, quant_analysis: Dict) -> VoteResult:
+    async def make_decision(self, quant_analysis: Dict, market_data: Optional[Dict] = None) -> VoteResult:
         """
         执行加权投票决策
         
         Args:
             quant_analysis: QuantAnalystAgent的输出
-            {
-                'trend_5m': {'score': -20, 'signal': 'weak_short', ...},
-                'trend_15m': {'score': 35, 'signal': 'moderate_long', ...},
-                'trend_1h': {'score': 60, 'signal': 'strong_long', ...},
-                'oscillator_5m': {...},
-                'oscillator_15m': {...},
-                'oscillator_1h': {...},
-                'comprehensive': {...}
-            }
+            market_data: 包含 df_5m, df_15m, df_1h 和 current_price 的原始市场数据
             
         Returns:
             VoteResult对象
@@ -102,7 +104,34 @@ class DecisionCoreAgent:
             'oscillator_1h': quant_analysis.get('oscillator_1h', {}).get('score', 0),
         }
         
-        # 2. 加权计算（得分范围-100~+100）
+        # 2. 市场状态与位置分析
+        regime = None
+        position = None
+        if market_data:
+            df_5m = market_data.get('df_5m')
+            curr_price = market_data.get('current_price')
+            if df_5m is not None and curr_price is not None:
+                regime = self.regime_detector.detect_regime(df_5m)
+                position = self.position_analyzer.analyze_position(df_5m, curr_price)
+                log.info(f"市场检测: 状态={regime['regime']}, 位置={position['position_pct']:.1f}%")
+
+        # 3. 提前过滤逻辑：震荡市+位置不佳
+        if regime and position:
+            if regime['regime'] == 'choppy' and position['location'] == 'middle':
+                result = VoteResult(
+                    action='hold',
+                    confidence=10.0,
+                    weighted_score=0,
+                    vote_details={},
+                    multi_period_aligned=False,
+                    reason=f"对抗式过滤: 震荡市且价格处于区间中部({position['position_pct']:.1f}%)，禁止开仓",
+                    regime=regime,
+                    position=position
+                )
+                self.history.append(result)
+                return result
+
+        # 4. 加权计算（得分范围-100~+100）
         weighted_score = (
             scores['trend_5m'] * self.weights.trend_5m +
             scores['trend_15m'] * self.weights.trend_15m +
@@ -112,44 +141,82 @@ class DecisionCoreAgent:
             scores['oscillator_1h'] * self.weights.oscillator_1h
         )
         
-        # 3. 计算各信号的实际贡献分（用于可解释性）
+        # 5. 计算各信号的实际贡献分（用于可解释性）
         vote_details = {
             key: scores[key] * getattr(self.weights, key)
             for key in scores.keys()
         }
         
-        # 4. 多周期对齐检测
+        # 6. 多周期对齐检测
         aligned, alignment_reason = self._check_multi_period_alignment(
             scores['trend_1h'],
             scores['trend_15m'],
             scores['trend_5m']
         )
         
-        # 5. 决策映射（分数 -> 动作）
-        action, confidence = self._score_to_action(weighted_score, aligned)
+        # 7. 初始决策映射（分数 -> 动作）
+        action, base_confidence = self._score_to_action(weighted_score, aligned)
         
-        # 6. 生成决策原因
+        # 8. 综合信心度校准
+        final_confidence = base_confidence
+        if regime and position:
+            final_confidence = self._calculate_comprehensive_confidence(
+                base_confidence, regime, position, aligned
+            )
+            # 信心度衰减逻辑：如果动作方向与位置不符，强制降低信心度
+            if action == 'open_long' and not position['allow_long']:
+                final_confidence *= 0.3
+                alignment_reason += f" | 预警: 做多位置过高({position['position_pct']:.1f}%)"
+            elif action == 'open_short' and not position['allow_short']:
+                final_confidence *= 0.3
+                alignment_reason += f" | 预警: 做空位置过低({position['position_pct']:.1f}%)"
+
+        # 9. 生成决策原因
         reason = self._generate_reason(
             weighted_score, 
             aligned, 
             alignment_reason, 
             quant_analysis
         )
+        if regime:
+            reason = f"[{regime['regime'].upper()}] {reason}"
         
-        # 7. 构建结果
+        # 10. 构建结果
         result = VoteResult(
             action=action,
-            confidence=confidence,
+            confidence=final_confidence,
             weighted_score=weighted_score,
             vote_details=vote_details,
             multi_period_aligned=aligned,
-            reason=reason
+            reason=reason,
+            regime=regime,
+            position=position
         )
         
-        # 8. 记录历史
+        # 11. 记录历史
         self.history.append(result)
         
         return result
+
+    def _calculate_comprehensive_confidence(self, 
+                                          base_conf: float, 
+                                          regime: Dict, 
+                                          position: Dict, 
+                                          aligned: bool) -> float:
+        """计算综合信心度"""
+        conf = base_conf
+        
+        # 加分项
+        if aligned: conf += 15
+        if regime['regime'] in ['trending_up', 'trending_down']: conf += 10
+        if position['quality'] == 'excellent': conf += 15
+        
+        # 减分项
+        if regime['regime'] == 'choppy': conf -= 25
+        if position['location'] == 'middle': conf -= 30
+        if regime['regime'] == 'volatile': conf -= 20
+        
+        return max(5.0, min(100.0, conf))
     
     def _check_multi_period_alignment(
         self, 

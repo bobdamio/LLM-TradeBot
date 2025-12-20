@@ -27,21 +27,31 @@ class DataSaver:
     def __init__(self, base_dir: str = 'data'):
         self.base_dir = base_dir
         
-        # 定义业务目录映射 (Strict Multi-Agent Form)
+        # 定义业务目录映射 (Advanced Multi-Agent Hierarchy)
         self.dirs = {
-            'market_data': os.path.join(base_dir, 'data_sync_agent'),
+            # 1. 数据同步层
+            'market_data': os.path.join(base_dir, 'data_sync_agent', 'market_data'),
+            
+            # 2. 量化分析层
             'indicators': os.path.join(base_dir, 'quant_analyst_agent', 'indicators'),
             'features': os.path.join(base_dir, 'quant_analyst_agent', 'features'),
-            'agent_context': os.path.join(base_dir, 'quant_analyst_agent', 'context'),
+            'analytics': os.path.join(base_dir, 'quant_analyst_agent', 'analytics'),
+            
+            # 3. 决策中心层
             'llm_logs': os.path.join(base_dir, 'decision_core_agent', 'llm_logs'),
             'decisions': os.path.join(base_dir, 'decision_core_agent', 'decisions'),
-            'executions': os.path.join(base_dir, 'execution_engine', 'orders'),
+            
+            # 4. 风控审计层
+            'risk_audits': os.path.join(base_dir, 'risk_audit_agent', 'audits'),
+            
+            # 5. 交易执行层
+            'orders': os.path.join(base_dir, 'execution_engine', 'orders'),
             'backtest': os.path.join(base_dir, 'execution_engine', 'backtest')
         }
         
-        # 创建所有目录
-        for path in self.dirs.values():
-            os.makedirs(path, exist_ok=True)
+        # 兼容旧路径映射 (Alias for legacy methods)
+        self.dirs['agent_context'] = self.dirs['analytics']
+        self.dirs['executions'] = self.dirs['orders']
             
     def _get_date_folder(self, category: str, date: Optional[str] = None) -> str:
         """获取或创建指定类别的日期文件夹"""
@@ -211,18 +221,18 @@ class DataSaver:
         record: Dict,
         symbol: str
     ) -> Dict[str, str]:
-        """保存执行记录 (原 save_step7_execution)"""
-        date_folder = self._get_date_folder('executions')
+        """保存执行记录"""
+        date_folder = self._get_date_folder('orders')
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
-        filename = f'execution_{symbol}_{timestamp}.json'
+        filename = f'order_{symbol}_{timestamp}.json'
         path = os.path.join(date_folder, filename)
         
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(record, f, indent=2, ensure_ascii=False)
         
         # 追加CSV
-        csv_path = os.path.join(date_folder, f'executions_{symbol}.csv')
+        csv_path = os.path.join(date_folder, f'orders_{symbol}.csv')
         df = pd.DataFrame([record])
         if os.path.exists(csv_path):
             df.to_csv(csv_path, mode='a', header=False, index=False)
@@ -231,6 +241,25 @@ class DataSaver:
             
         log.debug(f"保存执行记录: {path}")
         return {'json': path, 'csv': csv_path}
+
+    def save_risk_audit(
+        self,
+        audit_result: Dict,
+        symbol: str,
+        snapshot_id: str
+    ) -> Dict[str, str]:
+        """保存风控审计结果"""
+        date_folder = self._get_date_folder('risk_audits')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        filename = f'audit_{symbol}_{timestamp}_{snapshot_id}.json'
+        path = os.path.join(date_folder, filename)
+        
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(audit_result, f, indent=2, ensure_ascii=False)
+            
+        log.debug(f"保存风控审计记录: {path}")
+        return {'json': path}
 
     def list_files(self, category: str, date: str = None) -> List[str]:
         """列出文件"""

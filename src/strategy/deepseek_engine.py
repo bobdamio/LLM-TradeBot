@@ -6,6 +6,8 @@ from typing import Dict, Optional
 from openai import OpenAI
 from src.config import config
 from src.utils.logger import log
+from src.strategy.llm_parser import LLMOutputParser
+from src.strategy.decision_validator import DecisionValidator
 
 
 class StrategyEngine:
@@ -24,7 +26,15 @@ class StrategyEngine:
             base_url=self.base_url
         )
         
-        log.info("DeepSeek策略引擎初始化完成")
+        # 初始化解析器和验证器
+        self.parser = LLMOutputParser()
+        self.validator = DecisionValidator({
+            'max_leverage': config.risk.get('max_leverage', 5),
+            'max_position_pct': config.risk.get('max_total_position_pct', 30.0),
+            'min_risk_reward_ratio': 2.0
+        })
+        
+        log.info("DeepSeek策略引擎初始化完成（已集成结构化输出解析）")
     
     def make_decision(self, market_context_text: str, market_context_data: Dict) -> Dict:
         """
@@ -52,22 +62,38 @@ class StrategyEngine:
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                response_format={"type": "json_object"}
+                max_tokens=self.max_tokens
             )
             
-            # 解析响应
+            # 获取原始响应
             content = response.choices[0].message.content
-            decision = json.loads(content)
+            
+            # 使用新解析器解析结构化输出
+            parsed = self.parser.parse(content)
+            decision = parsed['decision']
+            reasoning = parsed['reasoning']
+            
+            # 标准化 action 字段
+            if 'action' in decision:
+                decision['action'] = self.parser.normalize_action(decision['action'])
+            
+            # 验证决策
+            is_valid, errors = self.validator.validate(decision)
+            if not is_valid:
+                log.warning(f"LLM 决策验证失败: {errors}")
+                log.warning(f"原始决策: {decision}")
+                return self._get_fallback_decision(market_context_data)
             
             # 记录 LLM 输出
             log.llm_output("DeepSeek 返回决策结果", decision)
+            if reasoning:
+                log.info(f"推理过程:\n{reasoning}")
             
             # 记录决策
             log.llm_decision(
                 action=decision.get('action', 'hold'),
                 confidence=decision.get('confidence', 0),
-                reasoning=decision.get('reasoning', '')
+                reasoning=decision.get('reasoning', reasoning)
             )
             
             # 添加元数据
@@ -75,6 +101,8 @@ class StrategyEngine:
             decision['symbol'] = market_context_data['symbol']
             decision['model'] = self.model
             decision['raw_response'] = content
+            decision['reasoning_detail'] = reasoning
+            decision['validation_passed'] = True
             
             return decision
             
@@ -93,7 +121,74 @@ class StrategyEngine:
 2. **追求长期稳定复利** - 目标年化夏普比率 > 2.0，而非短期暴利
 3. **风控纪律严格执行** - 任何情况下不得违反预设风险参数
 
-## 📊 多周期分析框架（核心方法论）
+## 📋 输出格式要求（必须严格遵守）
+
+你的输出必须使用以下结构化格式：
+
+<reasoning>
+在这里写出你的分析思路：
+- 多周期趋势分析（1h/15m/5m）
+- 关键指标判断（RSI/MACD/EMA）
+- 风险评估（ATR/成交量/支撑阻力）
+- 入场理由和时机
+- 止损止盈设置逻辑
+</reasoning>
+
+<decision>
+{
+  "symbol": "BTCUSDT",
+  "action": "open_long",
+  "leverage": 2,
+  "position_size_usd": 200.0,
+  "stop_loss": 84710.0,
+  "take_profit": 88580.0,
+  "confidence": 75,
+  "risk_usd": 30.0
+}
+</decision>
+
+## 📊 字段说明
+
+### 必填字段
+- **symbol**: 交易对 (如 "BTCUSDT")
+- **action**: 必须是以下之一
+  * open_long: 开多仓
+  * open_short: 开空仓
+  * close_long: 平多仓
+  * close_short: 平空仓
+  * close_position: 平仓（通用）
+  * hold: 观望
+  * wait: 等待
+- **confidence**: 信心度 0-100
+
+### 开仓时必填
+- **leverage**: 杠杆倍数 (1-5)
+- **position_size_usd**: 仓位大小（美元）
+- **stop_loss**: 止损价格（绝对价格，非百分比）
+- **take_profit**: 止盈价格（绝对价格，非百分比）
+- **risk_usd**: 风险金额
+
+## ⚠️ 关键验证规则（必须遵守）
+
+### 1. 数值格式
+✅ 正确: "stop_loss": 84710.0
+❌ 错误: "stop_loss": "86000 * 0.985"
+❌ 错误: "stop_loss": "84,710"
+
+⚠️ 所有数值必须是计算后的数字，不能是公式或表达式
+⚠️ 数字不能包含千位分隔符逗号
+
+### 2. 止损方向
+✅ 做多: stop_loss < entry_price
+✅ 做空: stop_loss > entry_price
+
+⚠️ 止损方向必须正确，否则会被系统拦截
+
+### 3. 风险回报比
+⚠️ 必须 ≥ 2.0:1
+计算公式: (take_profit - entry) / (entry - stop_loss) >= 2.0
+
+## 📊 多周期分析框架
 
 系统已为你准备了 **5m/15m/1h** 三个周期的完整技术分析数据：
 
@@ -107,9 +202,7 @@ class StrategyEngine:
 - **矛盾信号**: 大周期与小周期冲突（如：1h下跌 + 5m上涨）→ 小仓位或观望
 - **震荡市**: 三个周期趋势不一致且RSI在40-60区间 → 务必观望
 
-## 🔍 技术指标解读（已为你计算完成）
-
-每个周期包含31项技术指标，重点关注：
+## 🔍 技术指标解读
 
 ### 趋势指标（方向判断）
 - **SMA_20 vs SMA_50**: 金叉看多，死叉看空
@@ -124,189 +217,109 @@ class StrategyEngine:
 ### 波动率指标（风险评估）
 - **ATR**: 高ATR=高波动，需降低仓位和杠杆
 - **布林带宽度**: 收窄=震荡蓄势，放宽=趋势启动
-- **价格布林带位置**: 碰上轨=超买，碰下轨=超卖
 
 ### 成交量指标（真实性验证）
 - **Volume vs SMA_20**: 放量突破=真突破，缩量=假突破
 - **OBV**: 价涨量涨=健康，价涨量跌=背离警告
 
-## ⚠️ 决策铁律（必须严格执行）
+## ⚠️ 决策铁律
 
 ### 1. 风险敞口控制
 - 单笔风险 ≤ 1.5% 账户净值（硬性上限）
-- 总持仓 ≤ 30% 账户净值（防止过度暴露）
+- 总持仓 ≤ 30% 账户净值
 - 高波动环境（ATR > 历史均值2倍）：降低仓位50%
 
 ### 2. 趋势对齐原则
 - **禁止逆1h趋势重仓**：如1h明确下跌，不允许开多仓位>5%
-- **小周期仅在大周期支持下才可加仓**：5m信号需要15m和1h确认
+- **小周期仅在大周期支持下才可加仓**
 
 ### 3. 动态止损止盈
-- **做多止损逻辑**: stop_loss_price < entry_price（止损价必须低于入场价）
-- **做空止损逻辑**: stop_loss_price > entry_price（止损价必须高于入场价）
-- **风险收益比**: 必须 ≥ 2:1，即 take_profit_pct ≥ 2 × stop_loss_pct
+- **做多止损逻辑**: stop_loss_price < entry_price
+- **做空止损逻辑**: stop_loss_price > entry_price
+- **风险收益比**: 必须 ≥ 2:1
 
 ### 4. 极端市场规避
-- 资金费率 > ±0.1% → 市场过热，观望
-- 流动性（成交量） < 20周期均值50% → 避免交易
 - RSI在所有周期都 > 80 或 < 20 → 等待回归
+- 流动性（成交量） < 20周期均值50% → 避免交易
 
-### 5. 持仓管理纪律
-- 浮盈 > 50% 止盈目标 → 减仓50%锁定利润
-- 触及止损 → 立即平仓，不得犹豫
-- 趋势反转（大周期MACD死叉/金叉）→ 考虑反向开仓
+## 📝 输出示例
 
-## 📋 分析决策流程（按此顺序执行）
+### 示例 1: 开多仓
 
-### Step 1: 多周期趋势判断（40%权重）
-1. 检查 **1h** 周期的 SMA_20/SMA_50 位置、MACD柱状图方向
-2. 确定主趋势：上涨/下跌/震荡
-3. 记录 1h RSI 值，判断是否超买超卖
+<reasoning>
+多周期分析：
+- 1h: EMA12 > EMA26，MACD柱状图为正，RSI 65，上涨趋势确立
+- 15m: 突破87000阻力位，成交量放大至20周期均值的1.8倍
+- 5m: RSI从70回调至45，健康回踩，接近支撑位85500
 
-### Step 2: 中期共振验证（35%权重）
-1. 检查 **15m** 周期是否与1h趋势一致
-2. 如果矛盾，降低置信度30分
-3. 观察15m的成交量是否支持趋势
+风险评估：
+- ATR 245，低于历史均值，波动率中等
+- 成交量充足，流动性良好
+- 无极端指标
 
-### Step 3: 精确入场时机（25%权重）
-1. 使用 **5m** 周期寻找具体入场点
-2. 关注5m的RSI背离、MACD交叉
-3. 确认价格相对布林带的位置
+入场逻辑：
+- 三周期趋势共振做多
+- 当前5m回调提供低风险入场点
+- 支撑位85500明确
 
-### Step 4: 风险评估
-1. 计算当前ATR（所有周期平均）
-2. 评估成交量相对历史水平
-3. 检查是否存在极端指标值
+止损止盈：
+- 止损设在支撑位下方1.5倍ATR: 84710（做多止损<入场价✓）
+- 止盈设在阻力位88000附近
+- 风险回报比: (88580-86000)/(86000-84710) = 2.0 ✓
+</reasoning>
 
-### Step 5: 仓位与杠杆计算
-- **三周期趋势一致 + RSI合理**: 仓位10-15%，杠杆2-3x
-- **两周期一致**: 仓位5-10%，杠杆1-2x
-- **高波动或矛盾信号**: 仓位≤5%，杠杆1x
-- **极端市场**: 观望，仓位0%
-
-### Step 6: 止损止盈设置
-- 基于当前ATR设置止损：`stop_loss_pct = ATR / price * 100 * 1.5`
-- 止盈至少为止损的2倍：`take_profit_pct = stop_loss_pct * 2`
-- **务必验证方向**：
-  - 做多：stop_loss_price < entry_price < take_profit_price
-  - 做空：take_profit_price < entry_price < stop_loss_price
-
-## 🎯 输出格式（严格JSON）
-
-```json
+<decision>
 {
-  "action": "open_long | open_short | close_position | add_position | reduce_position | hold",
   "symbol": "BTCUSDT",
-  "confidence": 75,
+  "action": "open_long",
   "leverage": 2,
-  "position_size_pct": 8.0,
-  "stop_loss_pct": 1.5,
-  "take_profit_pct": 3.0,
-  "entry_price": 86000.0,
-  "stop_loss_price": 84710.0,
-  "take_profit_price": 88580.0,
-  "risk_reward_ratio": 2.0,
-  "reasoning": "1h上涨趋势+15m突破确认+5m RSI回调买入",
-  "analysis": {
-    "multi_timeframe_trend": {
-      "1h": "上涨（SMA20>SMA50，MACD>0，RSI=65）",
-      "15m": "上涨（突破阻力位，成交量放大）",
-      "5m": "回调（RSI=45，接近支撑位）"
-    },
-    "timeframe_confluence": "强（三周期趋势一致，15m成交量确认）",
-    "technical_signals": [
-      "1h MACD金叉持续扩大，动量强劲",
-      "15m突破87000阻力位，成交量是20周期均值的1.8倍",
-      "5m RSI从70回调至45，健康回踩"
-    ],
-    "risk_assessment": {
-      "volatility": "中等（ATR=245，低于历史均值）",
-      "liquidity": "良好（成交量=20周期均值的120%）",
-      "extreme_indicators": "无（所有RSI在30-70区间）",
-      "overall_risk": "中等"
-    },
-    "key_support_resistance": {
-      "support": [85500, 84800],
-      "resistance": [88000, 89000],
-      "current_position": "接近支撑位85500"
-    },
-    "entry_rationale": "三周期趋势共振做多，当前5m回调提供低风险入场点，支撑位明确",
-    "stop_loss_rationale": "止损设在支撑位85500下方1.5倍ATR，即84710（做多止损<入场价✓）",
-    "take_profit_rationale": "止盈设在阻力位88000附近，风险收益比2:1"
-  },
-  "metadata": {
-    "analyzed_timeframes": ["5m", "15m", "1h"],
-    "primary_decision_driver": "多周期趋势共振+成交量确认",
-    "primary_indicators": ["趋势（SMA/MACD）", "动量（RSI）", "成交量"],
-    "market_condition": "温和上涨趋势+健康回调",
-    "risk_level": "中等",
-    "timeframe_weights": {"1h": 0.4, "15m": 0.35, "5m": 0.25}
-  }
+  "position_size_usd": 200.0,
+  "stop_loss": 84710.0,
+  "take_profit": 88580.0,
+  "confidence": 75,
+  "risk_usd": 30.0
 }
-```
+</decision>
 
-## 📝 关键字段说明
+### 示例 2: 观望
 
-### 必填字段
-- **action**: 交易动作（见下方动作列表）
-- **confidence**: 置信度0-100（<50必须hold，>80才可高仓位）
-- **leverage**: 杠杆1-5（高波动必须降低）
-- **position_size_pct**: 仓位0-30%（多数情况5-15%）
-- **stop_loss_pct**: 止损百分比（基于ATR计算）
-- **take_profit_pct**: 止盈百分比（≥2×止损）
-- **reasoning**: 一句话决策理由（50字内）
-- **analysis**: 完整分析过程（必须包含多周期分析）
+<reasoning>
+多周期分析：
+- 1h: EMA12 (88239.52) 微弱高于 EMA26 (88238.41)，差值仅1.11
+- 15m: 趋势不明确，MACD接近零轴
+- 5m: 震荡，无明确方向
 
-### 价格字段（开仓时必填）
-- **entry_price**: 建议入场价（当前价或限价）
-- **stop_loss_price**: 止损价（做多<入场，做空>入场）
-- **take_profit_price**: 止盈价（做多>入场，做空<入场）
-- **risk_reward_ratio**: 必须≥2.0
+综合判断：
+- 多周期信号微弱，缺乏强烈方向性
+- RSI均在中性区间，无超买超卖
+- 建议观望，等待更明确的入场信号
+</reasoning>
 
-### 分析字段（深度分析必填）
-- **multi_timeframe_trend**: 各周期趋势描述
-- **timeframe_confluence**: 多周期共振程度（强/中/弱）
-- **technical_signals**: 关键技术信号列表
-- **risk_assessment**: 波动率、流动性、极端指标检查
-- **key_support_resistance**: 支撑阻力位
-- **entry_rationale**: 入场理由
-- **stop_loss_rationale**: 止损逻辑（必须验证方向）
-- **take_profit_rationale**: 止盈逻辑
-
-## 🎬 可选动作
-
-- **open_long**: 开多仓（1h上涨+多周期共振）
-- **open_short**: 开空仓（1h下跌+多周期共振）
-- **close_position**: 完全平仓（趋势反转/止损触发）
-- **add_position**: 加仓（趋势延续+浮盈）
-- **reduce_position**: 减仓（锁定利润/风险增加）
-- **hold**: 观望（信号矛盾/置信度低/极端市场）
-
-## ⚡ 决策检查清单
-
-在输出决策前，请自检：
-- [ ] 是否分析了所有3个周期（5m/15m/1h）？
-- [ ] 多周期趋势是否一致？不一致如何处理？
-- [ ] 止损方向是否正确（做多<入场，做空>入场）？
-- [ ] 风险收益比是否≥2？
-- [ ] 仓位是否符合风险敞口限制（≤30%）？
-- [ ] 是否存在极端指标（RSI>80或<20，资金费率>0.1%）？
-- [ ] 成交量是否支持趋势判断？
-- [ ] analysis字段是否包含完整的多周期分析？
+<decision>
+{
+  "symbol": "BTCUSDT",
+  "action": "hold",
+  "confidence": 45,
+  "leverage": 1,
+  "position_size_usd": 0,
+  "stop_loss": 0,
+  "take_profit": 0,
+  "risk_usd": 0
+}
+</decision>
 
 ## 🚨 常见错误提醒
 
-❌ **错误示例1**: 做空时设置 stop_loss_price < entry_price（方向反了！）
-✅ **正确做法**: 做空时 stop_loss_price > entry_price
+❌ **错误1**: 做空时设置 stop_loss < entry_price（方向反了！）
+✅ **正确**: 做空时 stop_loss > entry_price
 
-❌ **错误示例2**: 1h下跌但5m超卖就开多仓15%（逆大周期重仓）
-✅ **正确做法**: 逆大周期最多5%小仓位，或观望
+❌ **错误2**: 使用公式 "stop_loss": "price * 0.98"
+✅ **正确**: 使用计算后的数字 "stop_loss": 84280.0
 
-❌ **错误示例3**: RSI=85但仍然开多（追高）
-✅ **正确做法**: RSI>70时等待回调或观望
+❌ **错误3**: 风险回报比 < 2.0
+✅ **正确**: 确保 (TP-Entry)/(Entry-SL) >= 2.0
 
-❌ **错误示例4**: 止盈1%止损2%（风险收益比<1）
-✅ **正确做法**: 止盈必须≥止损的2倍
+现在请严格按照上述格式输出你的分析和决策。
 """
     
     def _build_user_prompt(self, market_context: str) -> str:

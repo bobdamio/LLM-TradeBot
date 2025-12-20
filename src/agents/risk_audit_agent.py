@@ -135,8 +135,48 @@ class RiskAuditAgent:
             return RiskCheckResult(
                 passed=True,
                 risk_level=RiskLevel.SAFE,
-                warnings=['持币观望，无风险']
+                warnings=['观望中']
             )
+
+        # 0.1 对抗式数据提取 (Market Awareness)
+        regime = decision.get('regime')
+        position = decision.get('position')
+        confidence = decision.get('confidence', 0)
+        
+        # 0.2 市场状态拦截 (Regime Filter)
+        if regime:
+            r_type = regime.get('regime')
+            if r_type == 'unknown':
+                return self._block_decision('total_blocks', "市场状态不明确，暂停开仓")
+            if r_type == 'volatile':
+                return self._block_decision('total_blocks', f"市场高波动(ATR {regime.get('atr_pct', 0):.2f}%)，风险控制拦截")
+            if r_type == 'choppy' and confidence < 80:
+                return self._block_decision('total_blocks', f"震荡市信心不足({confidence:.1f} < 80)，拦截开仓")
+
+        # 0.3 价格位置拦截 (Position Filter)
+        if position:
+            pos_pct = position.get('position_pct', 50)
+            location = position.get('location')
+            if location == 'middle' or 40 <= pos_pct <= 60:
+                return self._block_decision('total_blocks', f"价格处于区间中部({pos_pct:.1f}%)，R/R极差，禁止开仓")
+            
+            if action == 'long' and pos_pct > 70:
+                return self._block_decision('total_blocks', f"做多位置过高({pos_pct:.1f}%)，存在回调风险")
+            
+            if action == 'short' and pos_pct < 30:
+                return self._block_decision('total_blocks', f"做空位置过低({pos_pct:.1f}%)，存在反弹风险")
+
+        # 0.4 盈亏比硬核检查 (R/R Ratio)
+        entry_price = decision.get('entry_price', current_price)
+        stop_loss = decision.get('stop_loss')
+        take_profit = decision.get('take_profit')
+        if entry_price and stop_loss and take_profit:
+            risk = abs(entry_price - stop_loss)
+            reward = abs(take_profit - entry_price)
+            if risk > 0:
+                rr_ratio = reward / risk
+                if rr_ratio < 1.5:
+                    return self._block_decision('total_blocks', f"风险回报比不足({rr_ratio:.2f} < 1.5)")
         
         # 1. 【一票否决】检查逆向开仓
         if current_position:

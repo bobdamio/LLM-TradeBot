@@ -1,7 +1,7 @@
 """
 风险管理模块
 """
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any, Tuple
 from datetime import datetime, timedelta
 from src.config import config
 from src.utils.logger import log
@@ -25,17 +25,17 @@ class RiskManager:
         log.info("风险管理器初始化完成")
     
     def validate_decision(
-        self,
-        decision: Dict,
-        account_info: Dict,
+        self, 
+        decision: Dict, 
+        account_info: Dict, 
         position_info: Optional[Dict],
-        market_snapshot: Dict
-    ) -> tuple[bool, Dict, str]:
+        market_snapshot: Any
+    ) -> Tuple[bool, Dict, str]:
         """
-        验证并修正LLM决策
+        验证并修正决策 (增强风控审计 - 70% 过滤逻辑)
         
         Args:
-            decision: LLM原始决策
+            decision: 原始决策 (可能包含 regime 和 position 信息)
             account_info: 账户信息
             position_info: 当前持仓
             market_snapshot: 市场快照
@@ -43,9 +43,67 @@ class RiskManager:
         Returns:
             (is_valid, modified_decision, reason)
         """
-        
         modified_decision = decision.copy()
-        action = decision['action']
+        
+        # 0. 提取对抗式数据
+        regime = decision.get('regime')
+        position = decision.get('position')
+        action = decision.get('action')
+        confidence = decision.get('confidence', 0)
+        
+        # 1. 市场状态检查 (一票否决)
+        if regime:
+            r_type = regime.get('regime')
+            if r_type == 'unknown':
+                return False, decision, "风控拦截: 市场状态不明确，禁止交易"
+            if r_type == 'volatile':
+                return False, decision, f"风控拦截: 市场高波动(ATR {regime.get('atr_pct', 0):.2f}%)，风险过大"
+            if r_type == 'choppy' and confidence < 80:
+                # 震荡市需要极高信心才开仓
+                if action in ['long', 'short', 'open_long', 'open_short']:
+                    return False, decision, f"风控拦截: 震荡市且信心不足({confidence:.1f} < 80)，禁止开仓"
+
+        # 2. 位置检查 (位置感应过滤)
+        if position:
+            pos_pct = position.get('position_pct', 50)
+            location = position.get('location')
+            
+            # 禁止在区间中部开仓
+            if location == 'middle' or 40 <= pos_pct <= 60:
+                if action in ['long', 'short', 'open_long', 'open_short']:
+                    return False, decision, f"风控拦截: 价格处于区间中部({pos_pct:.1f}%)，盈亏比极差，禁止开仓"
+            
+            # 做多位置检查
+            if action in ['long', 'open_long'] and pos_pct > 70:
+                return False, decision, f"风控拦截: 做多位置过高({pos_pct:.1f}%)，接近阻力位"
+            
+            # 做空位置检查
+            if action in ['short', 'open_short'] and pos_pct < 30:
+                return False, decision, f"风控拦截: 做空位置过低({pos_pct:.1f}%)，接近支撑位"
+
+        # 3. 信心阈值检查
+        MIN_CONF_TO_OPEN = 70.0 # 提升开仓门槛
+        if action in ['long', 'short', 'open_long', 'open_short']:
+            if confidence < MIN_CONF_TO_OPEN:
+                return False, decision, f"风控拦截: 综合信心度不足({confidence:.1f} < {MIN_CONF_TO_OPEN})"
+
+        # 4. R/R 风险回报比检查 (硬约束)
+        # 如果是开仓动作，且包含价格信息，则计算 R/R
+        if action in ['long', 'short', 'open_long', 'open_short']:
+            curr_price = decision.get('current_price') or decision.get('entry_price')
+            sl_price = decision.get('stop_loss_price') or decision.get('stop_loss')
+            tp_price = decision.get('take_profit_price') or decision.get('take_profit')
+            
+            if curr_price and sl_price and tp_price:
+                risk = abs(curr_price - sl_price)
+                reward = abs(tp_price - curr_price)
+                if risk > 0:
+                    rr_ratio = reward / risk
+                    if rr_ratio < 1.5: # 至少 1.5 倍
+                        return False, decision, f"风控拦截: 风险回报比不足({rr_ratio:.2f} < 1.5)"
+
+        # 5. 基础账户风险检查
+        balance = account_info.get('total_wallet_balance', 0)
         
         # 1. 检查连续亏损
         if self.consecutive_losses >= self.max_consecutive_losses:

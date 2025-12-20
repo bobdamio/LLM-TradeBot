@@ -1,20 +1,48 @@
 # 🤖 LLM-TradeBot
 
-基于 LLM (DeepSeek) 的智能多 Agent 量化交易机器人，支持多时间框架同步、多 Agent 协作决策、技术指标自动计算及交易全链路审计。
+![Adversarial Intelligence Framework](./docs/adversarial_header.png)
+
+基于 **对抗式决策框架 (Adversarial Decision Framework)** 的智能多 Agent 量化交易机器人。通过市场状态检测、价格位置感知、动态评分校准及多层物理审计，实现高胜率、低回撤的自动化合约交易。
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Framework](https://img.shields.io/badge/Strategy-Adversarial%20Intelligence-gold.svg)](https://github.com/EthanAlgoX/LLM-TradeBot)
+
+---
+
+## 🛡️ 对抗式决策框架 (Adversarial Decision Framework)
+
+LLM-TradeBot 不再仅仅依赖传统的指标投票，而是采用了“全链路对抗”逻辑。在信号生成后，系统设置了四道严苛的防线：
+
+```mermaid
+graph TD
+    A[量化信号生成] --> B{第一道防线: 市场状态检测}
+    B -- 震荡市/高波动 --> C[降低信心得分 / 强制观望]
+    B -- 趋势市 --> D{第二道防线: 价格位置感知}
+    D -- 区间中部 --> C
+    D -- 支撑/阻力位 --> E{第三道防线: 动态评分校准}
+    E -- 信心不足 70% --> C
+    E -- 强对齐 --> F{第四道防线: 物理风险审计}
+    F -- 盈亏比 < 1.5 --> C
+    F -- 审计通过 --> G[🚀 执行买卖订单]
+```
+
+### 核心对抗逻辑
+
+1. **市场状态感知 (Regime Detection)**: 自动识别 `Trending`、`Choppy` 或 `Volatile`。在震荡市中自动开启“对抗过滤器”，减少追涨杀跌。
+2. **价格位置感知 (Position Awareness)**: 实时计算当前价格在区间的位置。**禁止在区间中部开仓**，只在极致的 R/R（风险回报比）位置出手。
+3. **信心度重塑 (Confidence Reshaping)**: 信号强度不再单纯映射为信心。系统会根据市场环境进行惩罚（如：震荡市高位多头信号，信心度将从 80% 降至 5%）。
+4. **硬核风控审计 (Risk Audit Agent)**: 拥有最终一票否决权。任何不符合对抗预期的决策（如 R/R < 1.5）都将被物理拦截。
 
 ---
 
 ## ✨ 核心特性
 
-- 🤖 **Multi-Agent 协作**: 4 个专业 Agent 分工协作，从数据采集到风控执行全流程自动化
-- ⚡ **异步并发**: 使用 `asyncio.gather` 并发获取多周期数据，减少 60% 等待时间
-- 🎯 **智能决策**: 加权投票机制整合多周期信号，LLM 增强决策质量
-- 🛡️ **严格风控**: 止损方向自动修正、资金预演、仓位控制、一票否决机制
-- 📊 **全链路审计**: 每个环节的中间数据完整保存，方便复盘和调试
-- 🔄 **双视图数据**: `stable_view` (已完成 K 线) + `live_view` (实时价格) 解决数据滞后
+- 🕵️ **感知优先**: 不同于常规指标派，系统优先判断“当前能不能打”，再判断“怎么打”。
+- 🤖 **Multi-Agent 协作**: 4 个高度专业化的 Agent 独立运行，形成对抗验证链条。
+- ⚡ **异步并发**: 并发获取多周期数据，确保 5m/15m/1h 的数据在同一快照瞬间对齐。
+- 🛡️ **安全至上**: 止损方向修正、资金预演、一票否决机制，为实盘交易保驾护航。
+- 📊 **全链路审计**: 每一个决策背后的对抗过程、信心惩罚细节均完整记录，实现真正的“白盒化”决策。
 
 ---
 
@@ -114,15 +142,13 @@ LLM-TradeBot/
 
 ## 🎯 核心架构
 
-### Multi-Agent 协作流程
+### 对抗式 Multi-Agent 协作流程
 
-系统由 5 个专业 Agent 协作完成交易全流程：
-
-1. **🕵️ DataSyncAgent**: 异步并发获取多周期 (5m, 15m, 1h) K线数据，确保时间对齐
-2. **👨‍🔬 QuantAnalystAgent**: 计算全量技术指标 (EMA, MACD, RSI, ATR 等)，提取 50+ 特征
-3. **⚖️ DecisionCoreAgent**: 整合多周期趋势与震荡信号，加权投票决策
-4. **🛡️ RiskAuditAgent**: 执行严格的风险审查（止损方向、仓位、杠杆、流动性）
-5. **🚀 ExecutionEngine**: 负责交易信号的最终执行及全生命周期追踪
+1. **🕵️ DataSyncAgent**: 异步并发获取多周期 (5m, 15m, 1h) K线数据，确保计算快照的一致性。
+2. **👨‍🔬 QuantAnalystAgent**: 负责基础信号提取，输出原始的趋势和震荡分值。
+3. **⚖️ DecisionCoreAgent**: **核心对抗层**。集成位置感知和状态检测，根据市场环境对量化信号进行“洗礼”，输出高质决策。
+4. **🛡️ RiskAuditAgent**: **安全终审官**。对 DecisionCore 的输出进行物理隔离审计，确保风险敞口和 R/R 符合对抗要求。
+5. **🚀 ExecutionEngine**: 负责交易信号的最后 100 毫秒执行及全生命周期订单追踪。
 
 ### 协作时序图
 
@@ -221,12 +247,11 @@ data/
 
 **2025-12-20**:
 
-- ✅ **文档优化**: 新增 4 个可视化架构图，提升文档专业性和可读性
-- ✅ **数据流转分析**: 完整的数据流转分析文档，包含 6 阶段详解
-- ✅ **项目重命名**: 正式更名为 `LLM-TradeBot`
-- ✅ **架构重构**: 迁移到纯 Multi-Agent 架构，放弃 legacy pipeline
-- ✅ **全链路审计**: 实现从数据采集到决策执行的完整中间态归档
-- ✅ **统一入口**: 合并所有运行脚本到 `main.py`
+- ✅ **对抗式决策框架**: 引入 `PositionAnalyzer` 和 `RegimeDetector`，实现环境感知的对抗决策。
+- ✅ **信心评分重构**: 实现动态信心惩罚机制，大幅降低震荡市误开仓率。
+- ✅ **文档优化**: 更新 README 全面突出对抗式架构，新增 Mermaid 决策流图。
+- ✅ **项目重命名**: 正式更名为 `LLM-TradeBot`。
+- ✅ **全链路审计**: 实现从数据采集到决策执行的完整中间态归档。
 
 ---
 
