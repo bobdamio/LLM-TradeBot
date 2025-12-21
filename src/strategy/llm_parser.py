@@ -1,6 +1,21 @@
 """
 LLM 输出解析器
 解析结构化的 LLM 输出（XML 标签 + JSON）
+
+支持格式：
+<reasoning>
+分析过程...
+</reasoning>
+
+<decision>
+```json
+[{
+  "symbol": "BTCUSDT",
+  "action": "open_long",
+  ...
+}]
+```
+</decision>
 """
 
 import re
@@ -19,12 +34,20 @@ class LLMOutputParser:
     </reasoning>
     
     <decision>
-    {
+    ```json
+    [{
       "symbol": "BTCUSDT",
       "action": "open_long",
       ...
-    }
+    }]
+    ```
     </decision>
+    
+    特性：
+    1. 优先从 XML 标签提取
+    2. 支持 ```json 代码块
+    3. 自动修复常见字符错误（中文引号、冒号、范围符号等）
+    4. 解析失败时进入安全回退模式（返回 wait 决策）
     """
     
     def __init__(self):
@@ -48,7 +71,7 @@ class LLMOutputParser:
             # 1. 提取推理过程
             reasoning = self._extract_tag_content(llm_response, 'reasoning')
             
-            # 2. 提取决策 JSON
+            # 2. 提取决策 JSON（优先从 XML 标签）
             decision_json = None
             for tag in self.supported_tags:
                 decision_json = self._extract_tag_content(llm_response, tag)
@@ -59,12 +82,17 @@ class LLMOutputParser:
             if not decision_json:
                 decision_json = self._extract_json_from_text(llm_response)
             
-            # 4. 解析 JSON（带容错）
+            # 4. 解析 JSON（带容错和安全回退）
             if decision_json:
                 decision = self._parse_json_with_fallback(decision_json)
             else:
-                log.warning("未找到决策 JSON，返回空决策")
-                decision = {}
+                log.warning("未找到决策 JSON，进入安全回退模式")
+                decision = self._get_fallback_decision()
+            
+            # 5. 确保决策有效，否则使用回退
+            if not decision or 'action' not in decision:
+                log.warning("决策无效，进入安全回退模式")
+                decision = self._get_fallback_decision()
             
             return {
                 'reasoning': reasoning or '',
@@ -73,10 +101,10 @@ class LLMOutputParser:
             }
             
         except Exception as e:
-            log.error(f"LLM 输出解析失败: {e}")
+            log.error(f"LLM 输出解析失败: {e}，进入安全回退模式")
             return {
                 'reasoning': '',
-                'decision': {},
+                'decision': self._get_fallback_decision(),
                 'raw_response': llm_response,
                 'parse_error': str(e)
             }
@@ -94,9 +122,9 @@ class LLMOutputParser:
         """
         # 支持多种标签格式
         patterns = [
-            rf'<{tag}>(.*?)</{tag}>',  # 标准格式
             rf'<{tag}>\s*```json\s*(.*?)\s*```\s*</{tag}>',  # 包含 ```json
             rf'<{tag}>\s*```\s*(.*?)\s*```\s*</{tag}>',  # 包含 ```
+            rf'<{tag}>(.*?)</{tag}>',  # 标准格式
         ]
         
         for pattern in patterns:
@@ -116,21 +144,23 @@ class LLMOutputParser:
         """
         从文本中提取 JSON 对象或数组
         
+        优先提取数组格式 [{...}]
+        
         Args:
             text: 原始文本
             
         Returns:
             JSON 字符串，如果未找到返回 None
         """
+        # 优先尝试匹配 JSON 数组 [{...}]
+        arr_match = re.search(r'\[\s*\{.*?\}\s*\]', text, re.DOTALL)
+        if arr_match:
+            return arr_match.group(0)
+        
         # 尝试匹配 JSON 对象 {...}
         obj_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
         if obj_match:
             return obj_match.group(0)
-        
-        # 尝试匹配 JSON 数组 [...]
-        arr_match = re.search(r'\[[^\[\]]*(?:\[[^\[\]]*\][^\[\]]*)*\]', text, re.DOTALL)
-        if arr_match:
-            return arr_match.group(0)
         
         return None
     
@@ -144,9 +174,12 @@ class LLMOutputParser:
         Returns:
             解析后的字典
         """
-        # 1. 尝试直接解析
+        # 1. 预处理：修正常见格式错误
+        normalized = self._normalize_characters(json_str)
+        
+        # 2. 尝试直接解析
         try:
-            data = json.loads(json_str)
+            data = json.loads(normalized)
             # 如果是数组，取第一个元素
             if isinstance(data, list) and len(data) > 0:
                 data = data[0]
@@ -154,10 +187,11 @@ class LLMOutputParser:
         except json.JSONDecodeError:
             pass
         
-        # 2. 修正常见格式错误后重试
+        # 3. 尝试移除尾部逗号后解析
         try:
-            normalized = self._normalize_characters(json_str)
-            data = json.loads(normalized)
+            cleaned = re.sub(r',\s*}', '}', normalized)
+            cleaned = re.sub(r',\s*\]', ']', cleaned)
+            data = json.loads(cleaned)
             if isinstance(data, list) and len(data) > 0:
                 data = data[0]
             return data
@@ -167,7 +201,13 @@ class LLMOutputParser:
     
     def _normalize_characters(self, text: str) -> str:
         """
-        修正全角字符和中文引号
+        修正格式错误
+        
+        修正内容：
+        1. 全角字符 -> 半角字符
+        2. 中文引号 -> 英文引号
+        3. 移除范围符号 ~
+        4. 移除数字中的千位分隔符 ,
         
         Args:
             text: 原始文本
@@ -175,8 +215,8 @@ class LLMOutputParser:
         Returns:
             修正后的文本
         """
+        # 全角符号 -> 半角符号
         replacements = {
-            # 全角符号 -> 半角符号
             '［': '[',
             '］': ']',
             '｛': '{',
@@ -193,7 +233,36 @@ class LLMOutputParser:
         for old, new in replacements.items():
             text = text.replace(old, new)
         
+        # 移除范围符号 ~ (如 "85000~86000" -> 取第一个值 "85000")
+        text = re.sub(r'(\d+\.?\d*)\s*~\s*\d+\.?\d*', r'\1', text)
+        
+        # 移除数字中的千位分隔符 (如 "84,710" -> "84710")
+        # 匹配字符串值中的带逗号数字
+        text = re.sub(r'"(\d{1,3}(?:,\d{3})+(?:\.\d+)?)"', 
+                      lambda m: '"' + m.group(1).replace(',', '') + '"', text)
+        
+        # 移除数字值（非字符串）中的千位分隔符
+        # 这个正则匹配 : 后面的带逗号数字
+        text = re.sub(r':\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?)\s*([,}\]])', 
+                      lambda m: ': ' + m.group(1).replace(',', '') + m.group(2), text)
+        
         return text
+    
+    def _get_fallback_decision(self) -> Dict:
+        """
+        获取安全回退决策
+        
+        当解析失败时返回 wait 决策
+        
+        Returns:
+            安全的 wait 决策
+        """
+        return {
+            'symbol': 'BTCUSDT',
+            'action': 'wait',
+            'confidence': 0,
+            'reasoning': 'Parse error, fallback to safe wait decision'
+        }
     
     def normalize_action(self, action: str) -> str:
         """
@@ -203,7 +272,6 @@ class LLMOutputParser:
         - long/buy -> open_long
         - short/sell -> open_short
         - close/exit -> close_position
-        - wait -> hold
         
         Args:
             action: 原始 action
@@ -243,6 +311,36 @@ class LLMOutputParser:
         
         normalized = action_map.get(action.lower(), action)
         return normalized
+    
+    def validate_format(self, json_str: str) -> Tuple[bool, str]:
+        """
+        验证 JSON 格式是否符合要求
+        
+        验证规则：
+        1. 必须以 [{ 开头
+        2. 不能包含范围符号 ~
+        3. 不能包含千位分隔符
+        
+        Args:
+            json_str: JSON 字符串
+            
+        Returns:
+            (is_valid, error_message)
+        """
+        # 检查是否以 [{ 开头
+        stripped = json_str.strip()
+        if not stripped.startswith('[{'):
+            return False, "JSON 必须是数组格式，以 [{ 开头"
+        
+        # 检查范围符号
+        if '~' in json_str:
+            return False, "禁止使用范围符号 ~"
+        
+        # 检查千位分隔符（在数字上下文中）
+        if re.search(r'\d{1,3},\d{3}', json_str):
+            return False, "禁止使用千位分隔符 ,"
+        
+        return True, ""
 
 
 # 测试代码

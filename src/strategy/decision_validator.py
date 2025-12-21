@@ -43,8 +43,8 @@ class DecisionValidator:
         """
         errors = []
         
-        # 1. 必填字段检查
-        required_fields = ['symbol', 'action', 'confidence']
+        # 1. 必填字段检查（所有 action 类型都需要）
+        required_fields = ['symbol', 'action', 'reasoning']
         for field in required_fields:
             if field not in decision:
                 errors.append(f"缺少必填字段: {field}")
@@ -63,14 +63,19 @@ class DecisionValidator:
         if decision['action'] not in valid_actions:
             errors.append(f"无效的 action: {decision['action']}")
         
-        # 3. confidence 范围检查
-        confidence = decision.get('confidence', 0)
-        if not (self.min_confidence <= confidence <= self.max_confidence):
-            errors.append(f"confidence 超出范围 [{self.min_confidence}, {self.max_confidence}]: {confidence}")
+        # 3. confidence 检查（如果存在）
+        if 'confidence' in decision:
+            confidence = decision.get('confidence', 0)
+            if not (self.min_confidence <= confidence <= self.max_confidence):
+                errors.append(f"confidence 超出范围 [{self.min_confidence}, {self.max_confidence}]: {confidence}")
         
-        # 4. 开仓操作的额外检查
+        # 4. 格式验证（所有字段）
+        format_errors = self._validate_format(decision)
+        errors.extend(format_errors)
+        
+        # 5. 开仓操作的额外检查
         if decision['action'] in ['open_long', 'open_short']:
-            # 4.1 开仓必填字段
+            # 5.1 开仓必填字段
             open_required = ['leverage', 'position_size_usd', 'stop_loss', 'take_profit']
             for field in open_required:
                 if field not in decision or decision[field] is None:
@@ -80,18 +85,18 @@ class DecisionValidator:
             if any('开仓操作缺少必填字段' in e for e in errors):
                 return False, errors
             
-            # 4.2 杠杆范围检查
+            # 5.2 杠杆范围检查
             leverage = decision.get('leverage', 1)
             if not (1 <= leverage <= self.max_leverage):
                 errors.append(f"leverage 超出范围 [1, {self.max_leverage}]: {leverage}")
             
-            # 4.3 仓位大小检查（如果有 position_size_pct）
+            # 5.3 仓位大小检查（如果有 position_size_pct）
             if 'position_size_pct' in decision:
                 position_pct = decision['position_size_pct']
                 if not (0 <= position_pct <= self.max_position_pct):
                     errors.append(f"position_size_pct 超出范围 [0, {self.max_position_pct}]: {position_pct}")
             
-            # 4.4 数值格式检查（不能是字符串公式）
+            # 5.4 数值格式检查（不能是字符串公式）
             numeric_fields = ['leverage', 'position_size_usd', 'stop_loss', 'take_profit', 'risk_usd']
             for field in numeric_fields:
                 if field in decision:
@@ -101,7 +106,7 @@ class DecisionValidator:
                     elif not isinstance(value, (int, float)):
                         errors.append(f"{field} 必须是数字: {value}")
             
-            # 4.5 止损方向检查
+            # 5.5 止损方向检查
             if not self.validate_stop_loss_direction(decision):
                 action = decision['action']
                 entry = decision.get('entry_price', decision.get('current_price', 0))
@@ -111,12 +116,41 @@ class DecisionValidator:
                 elif action == 'open_short':
                     errors.append(f"做空止损方向错误: stop_loss ({stop_loss}) 必须 > entry_price ({entry})")
             
-            # 4.6 风险回报比检查
+            # 5.6 风险回报比检查
             if not self.validate_risk_reward_ratio(decision):
                 ratio = self.calculate_risk_reward_ratio(decision)
                 errors.append(f"风险回报比不足: {ratio:.2f} < {self.min_risk_reward_ratio}")
         
         return len(errors) == 0, errors
+    
+    def _validate_format(self, decision: Dict) -> List[str]:
+        """
+        验证数值格式
+        
+        检查规则：
+        1. 禁止范围符号 ~
+        2. 禁止千位分隔符 ,
+        
+        Args:
+            decision: 决策字典
+            
+        Returns:
+            错误列表
+        """
+        errors = []
+        
+        for key, value in decision.items():
+            if isinstance(value, str):
+                # 检查范围符号
+                if '~' in value:
+                    errors.append(f"字段 {key} 包含禁止的范围符号 '~': {value}")
+                
+                # 检查千位分隔符（在数字上下文中）
+                import re
+                if re.match(r'^\d{1,3}(,\d{3})+(\.\d+)?$', value):
+                    errors.append(f"字段 {key} 包含禁止的千位分隔符 ',': {value}")
+        
+        return errors
     
     def validate_stop_loss_direction(self, decision: Dict) -> bool:
         """

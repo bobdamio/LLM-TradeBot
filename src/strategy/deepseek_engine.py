@@ -123,19 +123,20 @@ class StrategyEngine:
 
 ## 📋 输出格式要求（必须严格遵守）
 
-你的输出必须使用以下结构化格式：
+你的输出必须使用以下结构化格式，包含 <reasoning> 和 <decision> 两个 XML 标签：
 
 <reasoning>
-在这里写出你的分析思路：
-- 多周期趋势分析（1h/15m/5m）
-- 关键指标判断（RSI/MACD/EMA）
-- 风险评估（ATR/成交量/支撑阻力）
-- 入场理由和时机
-- 止损止盈设置逻辑
+在这里写出你的分析思路（必须使用英文或纯数字，禁止中文注释）：
+- Multi-timeframe trend analysis (1h/15m/5m)
+- Key indicator judgment (RSI/MACD/EMA)
+- Risk assessment (ATR/volume/support resistance)
+- Entry logic and timing
+- Stop loss and take profit rationale
 </reasoning>
 
 <decision>
-{
+```json
+[{
   "symbol": "BTCUSDT",
   "action": "open_long",
   "leverage": 2,
@@ -143,50 +144,60 @@ class StrategyEngine:
   "stop_loss": 84710.0,
   "take_profit": 88580.0,
   "confidence": 75,
-  "risk_usd": 30.0
-}
+  "reasoning": "Multi-timeframe bullish alignment with RSI pullback providing low-risk entry"
+}]
+```
 </decision>
+
+## ⚠️ 输出格式验证规则（违反将被系统拦截）
+
+1. **必须包含 `<reasoning>` 和 `<decision>` 两个 XML 标签**
+2. **JSON 必须包裹在 ```json 代码块中**
+3. **JSON 必须是数组格式 `[{...}]`，以 `[{` 开头**
+4. **禁止范围符号 `~`**（如 ❌ "85000~86000"）
+5. **禁止千位分隔符 `,`**（如 ❌ "84,710"）
+6. **禁止中文注释在 JSON 内部**
+7. **所有数值必须是计算后的纯数字**
 
 ## 📊 字段说明
 
-### 必填字段
+### 必填字段（所有 action 类型）
 - **symbol**: 交易对 (如 "BTCUSDT")
-- **action**: 必须是以下之一
-  * open_long: 开多仓
-  * open_short: 开空仓
-  * close_long: 平多仓
-  * close_short: 平空仓
-  * close_position: 平仓（通用）
-  * wait: 观望（无持仓时）
-  * hold: 持有（有持仓时维持当前仓位）
-- **confidence**: 信心度 0-100
+- **action**: 动作类型（见下方）
+- **reasoning**: 一句话决策理由（50字内，英文）
 
-### 开仓时必填
+### Action 类型及必填字段
+
+| Action | 含义 | 额外必填字段 |
+|--------|------|-------------|
+| `open_long` | 开多仓 | `leverage`, `position_size_usd`, `stop_loss`, `take_profit` |
+| `open_short` | 开空仓 | `leverage`, `position_size_usd`, `stop_loss`, `take_profit` |
+| `close_long` | 平多仓 | 无（系统自动获取仓位） |
+| `close_short` | 平空仓 | 无（系统自动获取仓位） |
+| `hold` | 持有（有持仓时） | 无 |
+| `wait` | 观望（无持仓时） | 无 |
+
+### 开仓必填字段详解
 - **leverage**: 杠杆倍数 (1-5)
-- **position_size_usd**: 仓位大小（美元）
-- **stop_loss**: 止损价格（绝对价格，非百分比）
-- **take_profit**: 止盈价格（绝对价格，非百分比）
-- **risk_usd**: 风险金额
+- **position_size_usd**: 仓位大小（美元，纯数字）
+- **stop_loss**: 止损价格（绝对价格，纯数字）
+- **take_profit**: 止盈价格（绝对价格，纯数字）
 
-## ⚠️ 关键验证规则（必须遵守）
+## ⚠️ 关键验证规则
 
 ### 1. 数值格式
-✅ 正确: "stop_loss": 84710.0
-❌ 错误: "stop_loss": "86000 * 0.985"
-❌ 错误: "stop_loss": "84,710"
-
-⚠️ 所有数值必须是计算后的数字，不能是公式或表达式
-⚠️ 数字不能包含千位分隔符逗号
+✅ 正确: `"stop_loss": 84710.0`
+❌ 错误: `"stop_loss": "86000 * 0.985"` (公式)
+❌ 错误: `"stop_loss": "84,710"` (千位分隔符)
+❌ 错误: `"stop_loss": "85000~86000"` (范围符号)
 
 ### 2. 止损方向
-✅ 做多: stop_loss < entry_price
-✅ 做空: stop_loss > entry_price
-
-⚠️ 止损方向必须正确，否则会被系统拦截
+✅ 做多 (open_long): `stop_loss < entry_price`
+✅ 做空 (open_short): `stop_loss > entry_price`
 
 ### 3. 风险回报比
 ⚠️ 必须 ≥ 2.0:1
-计算公式: (take_profit - entry) / (entry - stop_loss) >= 2.0
+计算公式: `(take_profit - entry) / (entry - stop_loss) >= 2.0`
 
 ## 📊 多周期分析框架
 
@@ -198,8 +209,8 @@ class StrategyEngine:
 - **5m 周期（权重25%）**: 精确入场点位，短期动量确认，止损止盈设置
 
 ### 多周期共振原则
-- **强信号**: 三个周期趋势一致（如：1h上涨 + 15m上涨 + 5m上涨）→ 可考虑加大仓位
-- **矛盾信号**: 大周期与小周期冲突（如：1h下跌 + 5m上涨）→ 小仓位或观望
+- **强信号**: 三个周期趋势一致 → 可考虑加大仓位
+- **矛盾信号**: 大周期与小周期冲突 → 小仓位或观望
 - **震荡市**: 三个周期趋势不一致且RSI在40-60区间 → 务必观望
 
 ## 🔍 技术指标解读
@@ -212,64 +223,47 @@ class StrategyEngine:
 ### 动量指标（力度判断）
 - **RSI**: <30超卖，>70超买，40-60震荡
 - **MACD**: 柱状图扩大=动量增强，收缩=动量减弱
-- **MACD信号线交叉**: 提前预警趋势变化
 
 ### 波动率指标（风险评估）
 - **ATR**: 高ATR=高波动，需降低仓位和杠杆
-- **布林带宽度**: 收窄=震荡蓄势，放宽=趋势启动
 
 ### 成交量指标（真实性验证）
 - **Volume vs SMA_20**: 放量突破=真突破，缩量=假突破
-- **OBV**: 价涨量涨=健康，价涨量跌=背离警告
 
 ## ⚠️ 决策铁律
 
 ### 1. 风险敞口控制
-- 单笔风险 ≤ 1.5% 账户净值（硬性上限）
+- 单笔风险 ≤ 1.5% 账户净值
 - 总持仓 ≤ 30% 账户净值
-- 高波动环境（ATR > 历史均值2倍）：降低仓位50%
+- 高波动环境：降低仓位50%
 
 ### 2. 趋势对齐原则
-- **禁止逆1h趋势重仓**：如1h明确下跌，不允许开多仓位>5%
+- **禁止逆1h趋势重仓**
 - **小周期仅在大周期支持下才可加仓**
 
-### 3. 动态止损止盈
-- **做多止损逻辑**: stop_loss_price < entry_price
-- **做空止损逻辑**: stop_loss_price > entry_price
+### 3. 止损止盈方向
+- **做多止损**: stop_loss < entry_price
+- **做空止损**: stop_loss > entry_price
 - **风险收益比**: 必须 ≥ 2:1
-
-### 4. 极端市场规避
-- RSI在所有周期都 > 80 或 < 20 → 等待回归
-- 流动性（成交量） < 20周期均值50% → 避免交易
 
 ## 📝 输出示例
 
-### 示例 1: 开多仓
+### 示例 1: 开多仓 (open_long)
 
 <reasoning>
-多周期分析：
-- 1h: EMA12 > EMA26，MACD柱状图为正，RSI 65，上涨趋势确立
-- 15m: 突破87000阻力位，成交量放大至20周期均值的1.8倍
-- 5m: RSI从70回调至45，健康回踩，接近支撑位85500
-
-风险评估：
-- ATR 245，低于历史均值，波动率中等
-- 成交量充足，流动性良好
-- 无极端指标
-
-入场逻辑：
-- 三周期趋势共振做多
-- 当前5m回调提供低风险入场点
-- 支撑位85500明确
-
-止损止盈：
-- 止损设在支撑位下方1.5倍ATR: 84710（做多止损<入场价✓）
-- 止盈设在阻力位88000附近
-- 风险回报比: (88580-86000)/(86000-84710) = 2.0 ✓
+1h: EMA12 > EMA26, MACD histogram positive, RSI 65, uptrend confirmed
+15m: Break above 87000 resistance with 1.8x volume
+5m: RSI pullback from 70 to 45, healthy retracement near 85500 support
+Risk: ATR 245 below average, good liquidity
+Entry: Triple timeframe bullish alignment, 5m pullback offers low-risk entry
+SL: Below support at 1.5x ATR = 84710 (SL < entry OK)
+TP: Near 88000 resistance
+RR ratio: (88580-86000)/(86000-84710) = 2.0
 </reasoning>
 
 <decision>
-{
+```json
+[{
   "symbol": "BTCUSDT",
   "action": "open_long",
   "leverage": 2,
@@ -277,49 +271,119 @@ class StrategyEngine:
   "stop_loss": 84710.0,
   "take_profit": 88580.0,
   "confidence": 75,
-  "risk_usd": 30.0
-}
+  "reasoning": "Triple timeframe bullish with RSI pullback entry"
+}]
+```
 </decision>
 
-### 示例 2: 观望（无持仓）
+### 示例 2: 开空仓 (open_short)
 
 <reasoning>
-多周期分析：
-- 1h: EMA12 (88239.52) 微弱高于 EMA26 (88238.41)，差值仅1.11
-- 15m: 趋势不明确，MACD接近零轴
-- 5m: 震荡，无明确方向
-
-综合判断：
-- 多周期信号微弱，缺乏强烈方向性
-- RSI均在中性区间，无超买超卖
-- 当前无持仓，建议观望，等待更明确的入场信号
+1h: EMA12 < EMA26, MACD histogram negative, RSI 35, downtrend confirmed
+15m: Failed to break 3400 resistance, rejection pattern
+5m: RSI bounce from 30 to 55 but momentum fading
+Risk: ATR 50, moderate volatility
+Entry: Triple timeframe bearish, 5m bounce offers short entry
+SL: Above resistance at 3500 (SL > entry OK for short)
+TP: Near 3200 support
+RR ratio: (3400-3200)/(3500-3400) = 2.0
 </reasoning>
 
 <decision>
-{
+```json
+[{
+  "symbol": "ETHUSDT",
+  "action": "open_short",
+  "leverage": 2,
+  "position_size_usd": 150.0,
+  "stop_loss": 3500.0,
+  "take_profit": 3200.0,
+  "confidence": 70,
+  "reasoning": "Triple timeframe bearish with failed resistance break"
+}]
+```
+</decision>
+
+### 示例 3: 平多仓 (close_long)
+
+<reasoning>
+Current long position at profit target
+1h: RSI approaching overbought at 75
+15m: MACD histogram shrinking, momentum fading
+5m: Bearish divergence forming
+Decision: Take profit on existing long position
+</reasoning>
+
+<decision>
+```json
+[{
+  "symbol": "BTCUSDT",
+  "action": "close_long",
+  "confidence": 80,
+  "reasoning": "Take profit at target with momentum fading"
+}]
+```
+</decision>
+
+### 示例 4: 平空仓 (close_short)
+
+<reasoning>
+Current short position hit stop loss level
+Price broke above resistance with volume
+Trend reversal signal confirmed
+Decision: Close short position to limit loss
+</reasoning>
+
+<decision>
+```json
+[{
+  "symbol": "ETHUSDT",
+  "action": "close_short",
+  "confidence": 85,
+  "reasoning": "Stop loss triggered on trend reversal"
+}]
+```
+</decision>
+
+### 示例 5: 观望 (wait)
+
+<reasoning>
+1h: EMA12 (88239.52) barely above EMA26 (88238.41), diff only 1.11
+15m: Trend unclear, MACD near zero
+5m: Choppy, no clear direction
+RSI all in neutral zone
+No position, recommend wait for clearer signal
+</reasoning>
+
+<decision>
+```json
+[{
   "symbol": "BTCUSDT",
   "action": "wait",
   "confidence": 45,
-  "leverage": 1,
-  "position_size_usd": 0,
-  "stop_loss": 0,
-  "take_profit": 0,
-  "risk_usd": 0
-}
+  "reasoning": "Weak multi-timeframe signals, await clearer entry"
+}]
+```
 </decision>
 
 ## 🚨 常见错误提醒
 
-❌ **错误1**: 做空时设置 stop_loss < entry_price（方向反了！）
+❌ **错误1**: JSON 不是数组格式
+✅ **正确**: 必须以 `[{` 开头，以 `}]` 结尾
+
+❌ **错误2**: 做空时 stop_loss < entry_price
 ✅ **正确**: 做空时 stop_loss > entry_price
 
-❌ **错误2**: 使用公式 "stop_loss": "price * 0.98"
-✅ **正确**: 使用计算后的数字 "stop_loss": 84280.0
+❌ **错误3**: 使用公式或范围 `"stop_loss": "85000~86000"`
+✅ **正确**: 使用纯数字 `"stop_loss": 85500.0`
 
-❌ **错误3**: 风险回报比 < 2.0
-✅ **正确**: 确保 (TP-Entry)/(Entry-SL) >= 2.0
+❌ **错误4**: 千位分隔符 `"position_size_usd": "1,000"`
+✅ **正确**: `"position_size_usd": 1000.0`
 
-现在请严格按照上述格式输出你的分析和决策。
+❌ **错误5**: 缺少 reasoning 字段
+✅ **正确**: 必须包含 reasoning 字段
+
+现在请严格按照上述格式输出你的分析和决策。JSON 必须是数组格式 `[{...}]`。
 """
     
     def _build_user_prompt(self, market_context: str) -> str:
@@ -361,35 +425,53 @@ class StrategyEngine:
 ### 5️⃣ 止损止盈设置（如果开仓）
 - 根据ATR计算合理的止损幅度
 - **验证止损方向**：
-  - 做多：stop_loss_price < entry_price
-  - 做空：stop_loss_price > entry_price
+  - 做多：stop_loss < entry_price
+  - 做空：stop_loss > entry_price
 - 止盈至少是止损的2倍
 
 ---
 
-## ⚡ 输出要求
+## ⚡ 输出格式要求（必须遵守）
 
-1. **严格JSON格式**，包含所有必填字段
-2. **analysis字段必须包含**：
-   - `multi_timeframe_trend`: 各周期趋势描述
-   - `timeframe_confluence`: 多周期共振程度
-   - `technical_signals`: 关键技术信号
-   - `risk_assessment`: 风险评估
-   - `stop_loss_rationale`: 止损逻辑（必须说明方向验证）
-3. **reasoning字段**：一句话总结（50字内）
-4. **confidence字段**：诚实评估，<50时必须hold
+1. **使用 <reasoning> 和 <decision> XML 标签**
+2. **JSON 必须包裹在 ```json 代码块中**
+3. **JSON 必须是数组格式 `[{{...}}]`**，以 `[{{` 开头
+4. **reasoning 字段必填**：一句话英文总结（50字内）
+5. **禁止**：范围符号 `~`、千位分隔符 `,`、中文注释
 
 ---
 
-## 🚨 特别提醒
+## 🚨 格式示例
 
-- ⚠️ **做空止损方向**：stop_loss_price **必须大于** entry_price
-- ⚠️ **做多止损方向**：stop_loss_price **必须小于** entry_price
+<reasoning>
+1h: [trend analysis]
+15m: [confluence check]
+5m: [entry timing]
+Risk: [assessment]
+</reasoning>
+
+<decision>
+```json
+[{{
+  "symbol": "BTCUSDT",
+  "action": "wait",
+  "confidence": 45,
+  "reasoning": "Weak signals, await clearer entry"
+}}]
+```
+</decision>
+
+---
+
+## ⚠️ 特别提醒
+
+- ⚠️ **JSON 数组格式**：必须以 `[{{` 开头，以 `}}]` 结尾
+- ⚠️ **做空止损方向**：stop_loss **必须大于** entry_price
+- ⚠️ **做多止损方向**：stop_loss **必须小于** entry_price
 - ⚠️ **逆大周期重仓**：1h下跌时不允许开多仓>5%
-- ⚠️ **极端指标规避**：RSI>80或<20时谨慎开仓
 - ⚠️ **风险收益比**：必须≥2，否则不值得交易
 
-现在请开始分析并输出JSON格式的决策。
+现在请开始分析并输出 JSON 数组格式 `[{{...}}]` 的决策。
 """
     
     def _get_fallback_decision(self, context: Dict) -> Dict:

@@ -51,6 +51,9 @@ from src.agents import (
     PositionInfo,
     SignalWeight
 )
+
+# DeepSeek 决策引擎 (替代多Agent投票)
+from src.strategy.deepseek_engine import StrategyEngine
 import threading
 import uvicorn
 from src.server.app import app
@@ -74,7 +77,8 @@ class MultiAgentTradingBot:
         leverage: int = 1,
         stop_loss_pct: float = 1.0,
         take_profit_pct: float = 2.0,
-        test_mode: bool = False
+        test_mode: bool = False,
+        decision_mode: str = 'agents'  # 'agents' = 多Agent投票, 'deepseek' = LLM直接决策
     ):
         """
         初始化多Agent交易机器人
@@ -86,8 +90,12 @@ class MultiAgentTradingBot:
             take_profit_pct: 止盈百分比
             test_mode: 测试模式（不执行真实交易）
         """
+        # 决策模式
+        self.decision_mode = decision_mode
+        
+        mode_name = "DeepSeek LLM" if decision_mode == 'deepseek' else "多Agent投票"
         print("\n" + "="*80)
-        print("🤖 AI Trader - 多Agent架构版本")
+        print(f"🤖 AI Trader - {mode_name}决策模式")
         print("="*80)
         
         self.config = Config()
@@ -139,6 +147,13 @@ class MultiAgentTradingBot:
         print(f"  ✅ PredictAgent 已就绪 (共 {len(self.symbols)} 个币种)")
         print("  ✅ DecisionCoreAgent 已就绪")
         print("  ✅ RiskAuditAgent 已就绪")
+        
+        # 🧠 DeepSeek 决策引擎 (如果选择 deepseek 模式)
+        if self.decision_mode == 'deepseek':
+            self.strategy_engine = StrategyEngine()
+            print("  ✅ DeepSeek StrategyEngine 已就绪")
+        else:
+            self.strategy_engine = None
         
         print(f"\n⚙️  交易配置:")
         print(f"  - 交易对: {', '.join(self.symbols)}")
@@ -308,9 +323,7 @@ class MultiAgentTradingBot:
             
             print(f"  ✅ 预测完毕: P(上涨)={prob_pct:.1f}%, 信号={predict_result.signal}")
             
-            # Step 3: 对抗 - 对抗评论员 (The Critic)
-            print("[Step 3/5] ⚖️ 对抗评论员 (The Critic) - 极速审理信号...")
-            # LOG 3: Critic (Log later after decision)
+            # Step 3: 对抗 - 对抗评论员 (The Critic) / DeepSeek 决策
             # ✅ 复用 Step 1 已处理的数据，避免第三次计算
             market_data = {
                 'df_5m': processed_dfs['5m'],
@@ -319,27 +332,80 @@ class MultiAgentTradingBot:
                 'current_price': current_price
             }
             
-            vote_result = await self.decision_core.make_decision(
-                quant_analysis,
-                predict_result=predict_result,
-                market_data=market_data
-            )
+            # 根据决策模式选择决策引擎
+            if self.decision_mode == 'deepseek':
+                # 🧠 DeepSeek LLM 直接决策模式
+                print("[Step 3/5] 🧠 DeepSeek LLM - 智能决策中...")
+                
+                # 构建市场上下文文本
+                market_context_text = self._build_market_context(
+                    quant_analysis=quant_analysis,
+                    predict_result=predict_result,
+                    market_data=market_data
+                )
+                
+                market_context_data = {
+                    'symbol': self.current_symbol,
+                    'timestamp': datetime.now().isoformat(),
+                    'current_price': current_price
+                }
+                
+                # 调用 DeepSeek 决策引擎
+                llm_decision = self.strategy_engine.make_decision(
+                    market_context_text=market_context_text,
+                    market_context_data=market_context_data
+                )
+                
+                # 转换为 VoteResult 兼容格式
+                from src.agents.decision_core_agent import VoteResult
+                vote_result = VoteResult(
+                    action=llm_decision.get('action', 'wait'),
+                    confidence=llm_decision.get('confidence', 0) / 100.0,  # 转换为 0-1
+                    weighted_score=llm_decision.get('confidence', 0) - 50,  # -50 to +50
+                    vote_details={'deepseek': llm_decision.get('confidence', 0)},
+                    multi_period_aligned=True,
+                    reason=llm_decision.get('reasoning', 'DeepSeek LLM decision'),
+                    regime={'regime': 'llm_mode', 'confidence': 100},
+                    position={'position_pct': 50, 'location': 'llm'}
+                )
+                
+                # 保存完整的 LLM 响应
+                self.saver.save_llm_log(
+                    content=f"PROMPT: DeepSeek Decision Engine\n\n{llm_decision.get('raw_response', '')}",
+                    symbol=self.current_symbol,
+                    snapshot_id=snapshot_id
+                )
+                
+                # LOG: DeepSeek
+                global_state.add_log(f"🧠 DeepSeek LLM: Action={vote_result.action.upper()} | Conf={llm_decision.get('confidence', 0)}% | {llm_decision.get('reasoning', '')[:50]}")
+            else:
+                # ⚖️ 多Agent投票决策模式
+                print("[Step 3/5] ⚖️ 对抗评论员 (The Critic) - 极速审理信号...")
+                
+                vote_result = await self.decision_core.make_decision(
+                    quant_analysis,
+                    predict_result=predict_result,
+                    market_data=market_data
+                )
+                
+                # LOG 3: Critic (Log later after decision)
             
             # ✅ Decision Recording moved after Risk Audit for complete context
             # Saved to file still happens here for "raw" decision
             self.saver.save_decision(asdict(vote_result), self.current_symbol, snapshot_id, cycle_id=cycle_id)
             
-            # ✅ Generate and Save LLM Context (LLM Logs)
-            # 记录输入给决策引擎的完整上下文以及最终投票结果
-            llm_context = self.decision_core.to_llm_context(
-                vote_result=vote_result, 
-                quant_analysis=quant_analysis
-            )
-            self.saver.save_llm_log(
-                content=f"PROMPT: N/A (Agent Voting Consensus)\n\n{llm_context}",
-                symbol=self.current_symbol,
-                snapshot_id=snapshot_id
-            )
+            # ✅ Generate and Save LLM Context (LLM Logs) - 仅 agents 模式
+            if self.decision_mode == 'agents':
+                # 记录输入给决策引擎的完整上下文以及最终投票结果
+                llm_context = self.decision_core.to_llm_context(
+                    vote_result=vote_result, 
+                    quant_analysis=quant_analysis
+                )
+                self.saver.save_llm_log(
+                    content=f"PROMPT: N/A (Agent Voting Consensus)\n\n{llm_context}",
+                    symbol=self.current_symbol,
+                    snapshot_id=snapshot_id
+                )
             
 
             # 如果是观望，也需要更新状态
@@ -909,10 +975,19 @@ class MultiAgentTradingBot:
             while global_state.is_running:
                 # Check pause state
                 if global_state.execution_mode == 'Paused':
+                    # 首次进入暂停时打印日志
+                    if not hasattr(self, '_pause_logged') or not self._pause_logged:
+                        print("\n⏸️ 系统已暂停，等待恢复...")
+                        global_state.add_log("⏸️ System PAUSED - waiting for resume...")
+                        self._pause_logged = True
                     time.sleep(1)
                     continue
+                else:
+                    self._pause_logged = False  # 重置暂停日志标记
                 
                 if global_state.execution_mode == 'Stopped':
+                    print("\n⏹️ 系统已停止")
+                    global_state.add_log("⏹️ System STOPPED by user")
                     break
 
                 # ✅ 统一周期计数: 在遍历币种前递增一次
@@ -992,6 +1067,8 @@ def main():
     parser.add_argument('--take-profit', type=float, default=2.0, help='止盈百分比')
     parser.add_argument('--mode', choices=['once', 'continuous'], default='once', help='运行模式')
     parser.add_argument('--interval', type=int, default=3, help='持续运行间隔（分钟）')
+    parser.add_argument('--decision-mode', choices=['agents', 'deepseek'], default='agents', 
+                        help='决策模式: agents=多Agent投票, deepseek=LLM直接决策')
     
     args = parser.parse_args()
     
@@ -1001,7 +1078,8 @@ def main():
         leverage=args.leverage,
         stop_loss_pct=args.stop_loss,
         take_profit_pct=args.take_profit,
-        test_mode=args.test
+        test_mode=args.test,
+        decision_mode=getattr(args, 'decision_mode', 'agents')
     )
     
     # 启动 Dashboard Server (Only if in continuous mode or if explicitly requested, but let's do it always for now if deps exist)

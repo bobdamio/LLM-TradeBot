@@ -384,12 +384,7 @@ initChart();
 setInterval(updateDashboard, 2000); // Poll every 2s
 updateDashboard();
 
-// Event Listeners for Controls
-document.getElementById('btn-start').addEventListener('click', () => sendControl('start'));
-document.getElementById('btn-pause').addEventListener('click', () => sendControl('pause'));
-document.getElementById('btn-stop').addEventListener('click', () => sendControl('stop'));
-document.getElementById('btn-restart').addEventListener('click', () => sendControl('restart'));
-
+// Note: Control button event listeners moved to setupEventListeners() at end of file
 // Symbol Selector - handled directly in index.html by TradingView loader
 // (K-Line chart now dynamically reloads on symbol change)
 
@@ -418,19 +413,7 @@ if (intervalSelector) {
     });
 }
 
-function sendControl(action) {
-    fetch('/api/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: action })
-    })
-        .then(res => res.json())
-        .then(data => {
-            console.log('Control sent:', action, data);
-            updateDashboard(); // Immediate refresh
-        })
-        .catch(err => console.error('Control failed:', err));
-}
+// Note: sendControl removed - functionality moved to setControl() in setupEventListeners()
 
 function renderSystemStatus(system) {
     const statusEl = document.getElementById('sys-mode');
