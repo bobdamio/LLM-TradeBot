@@ -458,7 +458,6 @@ function renderLogs(logs) {
 
     // Smart Scroll: Check if user is near bottom before update
     const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 100;
-    const previousScrollHeight = container.scrollHeight;
     const previousScrollTop = container.scrollTop;
 
     container.innerHTML = logs.map(logLine => {
@@ -475,32 +474,97 @@ function renderLogs(logs) {
             content = timeMatch[2];
         }
 
-        // Agent Badges
-        if (content.includes('[Oracle]')) {
-            content = content.replace('[Oracle]', '<span class="agent-tag oracle">Oracle</span>');
-        } else if (content.includes('[Strategist]')) {
-            content = content.replace('[Strategist]', '<span class="agent-tag strategist">Strategist</span>');
-        } else if (content.includes('[Critic]')) {
-            content = content.replace('[Critic]', '<span class="agent-tag critic">Critic</span>');
-        } else if (content.includes('[Guardian]')) {
-            content = content.replace('[Guardian]', '<span class="agent-tag guardian">Guardian</span>');
-        } else if (content.includes('[Executor]')) {
-            content = content.replace('[Executor]', '<span class="agent-tag" style="color:#55efc4">Executor</span>');
-        }
+        // --- Color Highlighting Rules ---
+
+        // 1. Top-Level Agents (Bold + Specific Color)
+        // Oracle (Purple)
+        content = content.replace(/DataSyncAgent/g, '<span style="color: #a29bfe; font-weight: bold;">DataSyncAgent</span>');
+        content = content.replace(/The Oracle/g, '<span style="color: #a29bfe;">The Oracle</span>');
+
+        // Strategist (Green)
+        content = content.replace(/QuantAnalystAgent/g, '<span style="color: #00b894; font-weight: bold;">QuantAnalystAgent</span>');
+        content = content.replace(/The Strategist/g, '<span style="color: #00b894;">The Strategist</span>');
+
+        // Critic (Orange/Gold)
+        content = content.replace(/DecisionCoreAgent/g, '<span style="color: #fdcb6e; font-weight: bold;">DecisionCoreAgent</span>');
+        content = content.replace(/The Critic/g, '<span style="color: #fdcb6e;">The Critic</span>');
+
+        // Guardian (Red)
+        content = content.replace(/RiskAuditAgent/g, '<span style="color: #ff7675; font-weight: bold;">RiskAuditAgent</span>');
+        content = content.replace(/The Guardian/g, '<span style="color: #ff7675;">The Guardian</span>');
+
+        // Executor (Cyan)
+        content = content.replace(/ExecutionEngine/g, '<span style="color: #00cec9; font-weight: bold;">ExecutionEngine</span>');
+        content = content.replace(/The Executor/g, '<span style="color: #00cec9;">The Executor</span>');
+
+        // 2. Sub-Agents (Lighter Green)
+        content = content.replace(/TrendSubAgent/g, '<span style="color: #55efc4;">TrendSubAgent</span>');
+        content = content.replace(/OscillatorSubAgent/g, '<span style="color: #55efc4;">OscillatorSubAgent</span>');
+        content = content.replace(/SentimentSubAgent/g, '<span style="color: #55efc4;">SentimentSubAgent</span>');
+
+        // 3. Key Actions/Results
+        content = content.replace(/Vote: ([A-Z]+)/g, 'Vote: <span style="color: #ffeaa7; font-weight: bold;">$1</span>');
+        content = content.replace(/Result: (✅ PASSED)/g, 'Result: <span style="color: #55efc4; font-weight: bold;">✅ PASSED</span>');
+        content = content.replace(/Result: (❌ BLOCKED)/g, 'Result: <span style="color: #ff7675; font-weight: bold;">❌ BLOCKED</span>');
+        content = content.replace(/Command: ([A-Z]+)/g, 'Command: <span style="color: #74b9ff; font-weight: bold;">$1</span>');
+
+        // 4. Cycle Info (Highlight Cycle #X)
+        content = content.replace(/Cycle #(\d+)/g, '<span style="color: #fdcb6e; font-weight: bold;">Cycle #$1</span>');
 
         return `<div class="log-entry">${time} ${content}</div>`;
     }).join('');
 
     // Restore Scroll Position
     if (isScrolledToBottom) {
-        container.scrollTop = container.scrollHeight; // Auto-scroll to newest
+        container.scrollTop = container.scrollHeight;
     } else {
-        // Maintain relative position if content size changed (optional, but pure restoration is safer for now)
         container.scrollTop = previousScrollTop;
     }
 }
 
 // Init
 initChart();
+setupEventListeners();
 setInterval(updateDashboard, 2000); // Poll every 2s
 updateDashboard();
+
+function setControl(action, payload = {}) {
+    fetch('/api/control', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            action: action,
+            ...payload
+        })
+    })
+        .then(res => res.json())
+        .then(data => {
+            console.log(`Command ${action} sent.`, data);
+            setTimeout(updateDashboard, 200);
+        })
+        .catch(err => console.error('Control request failed:', err));
+}
+
+function setupEventListeners() {
+    const btnStart = document.getElementById('btn-start');
+    if (btnStart) btnStart.addEventListener('click', () => setControl('start'));
+
+    const btnPause = document.getElementById('btn-pause');
+    if (btnPause) btnPause.addEventListener('click', () => setControl('pause'));
+
+    const btnStop = document.getElementById('btn-stop');
+    if (btnStop) btnStop.addEventListener('click', () => setControl('stop'));
+
+    const btnRestart = document.getElementById('btn-restart');
+    if (btnRestart) btnRestart.addEventListener('click', () => setControl('restart'));
+
+    const intervalSel = document.getElementById('interval-selector');
+    if (intervalSel) {
+        intervalSel.addEventListener('change', (e) => {
+            const val = parseInt(e.target.value);
+            setControl('set_interval', { interval: val });
+        });
+    }
+}

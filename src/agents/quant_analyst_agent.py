@@ -325,7 +325,7 @@ class QuantAnalystAgent:
         """
         分析所有周期（异步版本，适配DecisionCoreAgent）
         """
-        log.strategist("📊 开始量化分析...")
+        # log.strategist("📊 开始量化分析...")
         
         # 1. 趋势与震荡得分
         trend_results = self.trend_agent.analyze(snapshot)
@@ -341,10 +341,10 @@ class QuantAnalystAgent:
         
         composite_score = (t_score * 0.4) + (o_score * 0.3) + (s_score * 0.3)
         
-        log.strategist(f"  ├─ 趋势得分: {t_score}")
-        log.strategist(f"  ├─ 反转得分: {o_score}")
-        log.strategist(f"  ├─ 情绪得分: {s_score}")
-        log.strategist(f"  └─ 综合得分: {composite_score:.1f}")
+        # log.strategist(f"  ├─ 趋势得分: {t_score}")
+        # log.strategist(f"  ├─ 反转得分: {o_score}")
+        # log.strategist(f"  ├─ 情绪得分: {s_score}")
+        # log.strategist(f"  └─ 综合得分: {composite_score:.1f}")
         
         report = {
             'comprehensive': {
@@ -362,7 +362,7 @@ class QuantAnalystAgent:
             'sentiment': sentiment_results
         }
         
-        log.strategist(f"✅ 量化分析完成，主信号: {report['comprehensive']['signal']}")
+        # log.strategist(f"✅ 量化分析完成，主信号: {report['comprehensive']['signal']}")
         
         return report
 

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM-TradeBot Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=30">
+    <link rel="stylesheet" href="/static/style.css?v=35">
     <link
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap"
         rel="stylesheet">
@@ -204,8 +204,49 @@
                     <div class="compound-header">
                         <h2>📡 Live Log Output</h2>
                     </div>
-                    <div class="compound-body">
-                        <div id="logs-container" class="logs-scroll">
+                    <div class="compound-body split-log-view">
+                        <!-- Documentation Sidebar -->
+                        <div class="agent-docs-sidebar custom-scroll">
+                            <div class="agent-doc-item">
+                                <h4 class="agent-title oracle">🕵️ DataSyncAgent (The Oracle)</h4>
+                                <p class="role"><strong>职责:</strong> 全知全能的数据源，负责对齐时空。</p>
+                                <ul>
+                                    <li><strong>异步并发:</strong> 拉取多周期(5m/15m/1h) K线 + 资金费率。</li>
+                                    <li><strong>快照对齐:</strong> 确保所有数据属于同一“时间切片”。</li>
+                                    <li><strong>双视图:</strong> 提供 Stable (收盘) 和 Live (实时) 视图。</li>
+                                </ul>
+                            </div>
+                            <div class="agent-doc-item">
+                                <h4 class="agent-title strategist">👨‍🔬 QuantAnalystAgent (The Strategist)</h4>
+                                <p class="role"><strong>职责:</strong> 信号生成器，生成多维度技术信号。</p>
+                                <ul>
+                                    <li><strong>TrendSubAgent:</strong> 专注趋势 (EMA/MACD)。</li>
+                                    <li><strong>OscillatorSubAgent:</strong> 专注反转 (RSI/BB)。</li>
+                                    <li><strong>SentimentSubAgent:</strong> 专注情绪 (费率/持仓)。</li>
+                                </ul>
+                            </div>
+                            <div class="agent-doc-item">
+                                <h4 class="agent-title critic">⚖️ DecisionCoreAgent (The Critic)</h4>
+                                <p class="role"><strong>职责:</strong> 决策大脑，对抗式判官。</p>
+                                <ul>
+                                    <li><strong>环境感知:</strong> 区分趋势市/震荡市。</li>
+                                    <li><strong>位置感知:</strong> 识别价格在历史区间的相对位置。</li>
+                                    <li><strong>加权投票:</strong> 动态调整权重，产出信心分数。</li>
+                                </ul>
+                            </div>
+                            <div class="agent-doc-item">
+                                <h4 class="agent-title guardian">🛡️ RiskAuditAgent (The Guardian)</h4>
+                                <p class="role"><strong>职责:</strong> 物理隔离审计，拥有一票否决权。</p>
+                                <ul>
+                                    <li><strong>R/R Check:</strong> 盈亏比检查。</li>
+                                    <li><strong>回撤保护:</strong> 触发最大回撤强制熔断。</li>
+                                    <li><strong>自动修正:</strong> 强制降低不合理的重仓建议。</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Logs Terminal -->
+                        <div id="logs-container" class="logs-scroll custom-scroll">
                             <!-- JS Populated -->
                         </div>
                     </div>

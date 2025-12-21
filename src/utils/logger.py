@@ -135,16 +135,28 @@ def setup_logger():
     # 使用日期子目录: logs/YYYY-MM-DD/trading.log
     log_file = config.logging.get('file', 'logs/trading.log')
     log_path = Path(log_file)
-    # 动态生成带日期的路径格式 (loguru 支持在路径中使用 {time} 令牌)
-    # 我们将 logs/trading.log 转换为 logs/{time:YYYY-MM-DD}/trading.log
+    # 1. Dashboard Log (Clean) -> trading.log
+    # 动态生成带日期的路径格式
     dynamic_log_file = str(log_path.parent / "{time:YYYY-MM-DD}" / log_path.name)
     
     logger.add(
         dynamic_log_file,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function} - {message}",
-        level=config.logging.get('level', 'INFO'),
+        format="{time:YYYY-MM-DD HH:mm:ss} {message}", 
+        filter=lambda record: record["extra"].get("dashboard") is True,
+        level="INFO",
         rotation="00:00",
         retention="30 days",
+        compression="zip"
+    )
+
+    # 2. System Debug Log (Verbose) -> debug.log
+    debug_log_file = str(log_path.parent / "{time:YYYY-MM-DD}" / "debug.log")
+    logger.add(
+        debug_log_file,
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function} - {message}",
+        level="DEBUG",
+        rotation="00:00",
+        retention="7 days",
         compression="zip"
     )
     

@@ -264,7 +264,7 @@ class RiskAuditAgent:
         )
         
         # 8. 记录审计日志
-        log.guardian(f"审计通过: {action.upper()} (信心: {confidence:.1f}%)")
+        # log.guardian(f"审计通过: {action.upper()} (信心: {confidence:.1f}%)")
         self._log_audit(
             decision=decision,
             result='PASSED',
@@ -504,7 +504,7 @@ class RiskAuditAgent:
         self.block_stats['total_blocks'] += 1
         self.block_stats[stat_key] += 1
         
-        log.guardian(f"决策拦截: {reason}", blocked=True)
+        # log.guardian(f"决策拦截: {reason}", blocked=True)
         
         self._log_audit(
             decision={'blocked': True},

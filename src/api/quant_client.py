@@ -18,7 +18,16 @@ class QuantClient:
         self.session: Optional[aiohttp.ClientSession] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        if self.session is None or self.session.closed:
+        current_loop = asyncio.get_running_loop()
+        
+        if self.session:
+            if self.session.closed:
+                self.session = None
+            elif self.session._loop is not current_loop:
+                # Session bound to a different/closed loop, discard it
+                self.session = None
+                
+        if self.session is None:
             self.session = aiohttp.ClientSession(timeout=self.timeout)
         return self.session
 

@@ -98,7 +98,7 @@ class DataSyncAgent:
         """
         start_time = datetime.now()
         
-        log.oracle(f"📊 开始并发获取 {symbol} 数据...")
+        # log.oracle(f"📊 开始并发获取 {symbol} 数据...")
         
         # 并发请求（关键优化：节省60% IO时间）
         loop = asyncio.get_event_loop()
@@ -136,7 +136,7 @@ class DataSyncAgent:
         k5m, k15m, k1h, q_data, b_funding, b_oi = await asyncio.gather(*tasks)
         
         fetch_duration = (datetime.now() - start_time).total_seconds()
-        log.oracle(f"✅ 数据获取完成，耗时: {fetch_duration:.2f}秒")
+        # log.oracle(f"✅ 数据获取完成，耗时: {fetch_duration:.2f}秒")
         
         # 拆分双视图
         snapshot = MarketSnapshot(
@@ -170,7 +170,7 @@ class DataSyncAgent:
         self.last_snapshot = snapshot
         
         # 日志记录
-        self._log_snapshot_info(snapshot)
+        # self._log_snapshot_info(snapshot)
         
         return snapshot
     

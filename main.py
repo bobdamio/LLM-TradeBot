@@ -172,7 +172,6 @@ class MultiAgentTradingBot:
 
             # Step 1: 采样 - 数据先知 (The Oracle)
             print("\n[Step 1/4] 🕵️ 数据先知 (The Oracle) - 异步数据采集...")
-            # Removed verbose log: Oracle fetching data
             global_state.oracle_status = "Fetching Data..." 
             market_snapshot = await self.data_sync_agent.fetch_all_timeframes(self.symbol)
             global_state.oracle_status = "Data Ready"
@@ -204,6 +203,9 @@ class MultiAgentTradingBot:
             current_price = market_snapshot.live_5m.get('close')
             print(f"  ✅ 采样完毕: ${current_price:,.2f} ({market_snapshot.timestamp.strftime('%H:%M:%S')})")
             
+            # LOG 1: Oracle (Single Line)
+            global_state.add_log(f"🕵️ DataSyncAgent (The Oracle): Action=Fetch[5m,15m,1h] | Snapshot=${current_price:,.2f}")
+            
             # Update Dashboard Market Data (Initial)
             global_state.current_price = current_price
             
@@ -216,12 +218,32 @@ class MultiAgentTradingBot:
             s_score = quant_analysis['comprehensive']['score']
             global_state.strategist_score = s_score
             
+            # --- Detailed Multi-Agent Logging ---
+            # --- Single Line Strategist Log ---
+            # Trend
+            t_res = quant_analysis.get('trend', {})
+            t_score = t_res.get('total_trend_score', 0)
+            t_str = f"Trend({t_res.get('1h_trend','N/A')},{t_score})"
+            
+            # Oscillator
+            o_res = quant_analysis.get('oscillator', {})
+            o_score = o_res.get('total_oscillator_score', 0)
+            o_str = f"Osc(RSI:{o_res.get('rsi_15m',0):.0f},{o_score})"
+
+            # Sentiment
+            s_res = quant_analysis.get('sentiment', {})
+            sent_score = s_res.get('total_sentiment_score', 0)
+            s_str = f"Sent(OI:{s_res.get('oi_change_24h_pct',0):.1f}%,{sent_score})"
+            
+            # LOG 2: Strategist
+            global_state.add_log(f"👨‍🔬 QuantAnalystAgent (The Strategist): {t_str} | {o_str} | {s_str} => Score: {s_score:.0f}/100")
+            
             # ✅ Save Quant Analysis (Analytics)
             self.saver.save_context(quant_analysis, self.symbol, 'analytics', snapshot_id)
             
             # Step 3: 对抗 - 对抗评论员 (The Critic)
             print("[Step 3/4] ⚖️ 对抗评论员 (The Critic) - 极速审理信号...")
-            # Removed verbose log: Critic reviewing
+            # LOG 3: Critic (Log later after decision)
             # ✅ 复用 Step 1 已处理的数据，避免第三次计算
             market_data = {
                 'df_5m': processed_dfs['5m'],
@@ -256,13 +278,25 @@ class MultiAgentTradingBot:
             if vote_result.action == 'hold':
                 print("\n✅ 决策: 观望")
                 
-                # ✅ Fix: Convert 'hold' to 'wait' when no position
+                # GlobalState Logging of Logic
+                regime_txt = vote_result.regime.get('regime', 'Unknown') if vote_result.regime else 'Unknown'
+                pos_txt = f"{vote_result.position.get('position_pct', 0):.0f}%" if vote_result.position else 'N/A'
+                
+                # GlobalState Logging of Logic
+                regime_txt = vote_result.regime.get('regime', 'Unknown') if vote_result.regime else 'Unknown'
+                pos_txt = f"{vote_result.position.get('position_pct', 0):.0f}%" if vote_result.position else 'N/A'
+                
+                # LOG 3: Critic (Wait Case)
+                global_state.add_log(f"⚖️ DecisionCoreAgent (The Critic): Context(Regime={regime_txt}, Pos={pos_txt}) => Vote: WAIT ({vote_result.reason})")
                 # Check if there's an active position
                 # For now, we assume no position in test mode (can be enhanced with real position check)
                 actual_action = 'wait'  # No position → wait (观望)
                 # If we had a position, it would be 'hold' (持有)
                 
-                global_state.add_log(f"Decision: {actual_action.upper()} ({vote_result.reason})")
+                # Check if there's an active position
+                # For now, we assume no position in test mode (can be enhanced with real position check)
+                actual_action = 'wait'  # No position → wait (观望)
+                # If we had a position, it would be 'hold' (持有)
                 
                 # Update State with WAIT/HOLD decision
                 decision_dict = asdict(vote_result)
@@ -294,7 +328,17 @@ class MultiAgentTradingBot:
             
             # Step 4: 审计 - 风控守护者 (The Guardian)
             print(f"[Step 4/4] 👮 风控守护者 (The Guardian) - 进行终审...")
-            # Removed verbose log: Guardian auditing
+            
+            # Critic Log for Action decision
+            # Step 4: 审计 - 风控守护者 (The Guardian)
+            print(f"[Step 4/4] 👮 风控守护者 (The Guardian) - 进行终审...")
+            
+            # LOG 3: Critic (Action Case) - if not already logged (Wait case returns early)
+            regime_txt = vote_result.regime.get('regime', 'Unknown') if vote_result.regime else 'Unknown'
+            # Note: Wait case returns, so if we are here, it's an action.
+            global_state.add_log(f"⚖️ DecisionCoreAgent (The Critic): Context(Regime={regime_txt}) => Vote: {vote_result.action.upper()} (Conf: {vote_result.confidence:.0f}%)")
+            
+            global_state.guardian_status = "Auditing..."
             global_state.guardian_status = "Auditing..."
             
             order_params = self._build_order_params(
@@ -353,8 +397,13 @@ class MultiAgentTradingBot:
             
             # Update Dashboard Guardian Status
             global_state.guardian_status = "PASSED" if audit_result.passed else "BLOCKED"
+            
+            # LOG 4: Guardian (Single Line)
             if not audit_result.passed:
-                 global_state.add_log(f"Risk Block: {audit_result.blocked_reason}")
+                 global_state.add_log(f"🛡️ RiskAuditAgent (The Guardian): Result: ❌ BLOCKED ({audit_result.blocked_reason})")
+            else:
+                 warn_txt = f" | Corrections: {audit_result.corrections}" if audit_result.corrections else ""
+                 global_state.add_log(f"🛡️ RiskAuditAgent (The Guardian): Result: ✅ PASSED (Risk: {audit_result.risk_level.value}){warn_txt}")
             
             # ✅ Update Global State with FULL Decision info (Vote + Audit)
             decision_dict = asdict(vote_result)
@@ -422,8 +471,14 @@ class MultiAgentTradingBot:
             if self.test_mode:
                 print("\n[Step 5/5] 🧪 TestMode - 模拟执行...")
                 print(f"  模拟订单: {order_params['action']} {order_params['quantity']} @ {current_price}")
-                # Removed verbose log: Simulating order
                 
+            if self.test_mode:
+                print("\n[Step 5/5] 🧪 TestMode - 模拟执行...")
+                print(f"  模拟订单: {order_params['action']} {order_params['quantity']} @ {current_price}")
+                
+                # LOG 5: Executor (Test)
+                global_state.add_log(f"🚀 ExecutionEngine (The Executor): Mode=Test => Command: {order_params['action'].upper()} {order_params['quantity']} @ {current_price:.2f}")
+
                  # ✅ Save Execution (Simulated)
                 self.saver.save_execution({
                     'symbol': self.symbol,
@@ -457,10 +512,30 @@ class MultiAgentTradingBot:
                     'action': vote_result.action,
                     'details': order_params
                 }
-            
-            print("\n[Step 5/5] 🚀 ExecutionEngine - 正在执行...")
-            # Removed verbose log: Executing order
-            executed = self._execute_order(order_params)
+            else:
+                # Live Execution
+                print("\n[Step 5/5] 🚀 LiveTrade - 实盘执行...")
+                
+                try:
+                    # _execute_order returns bool
+                    is_success = self._execute_order(order_params)
+                    
+                    status_icon = "✅" if is_success else "❌"
+                    status_txt = "SENT" if is_success else "FAILED"
+                    
+                    # LOG 5: Executor (Live)
+                    global_state.add_log(f"🚀 ExecutionEngine (The Executor): Mode=Live | Command={order_params['action'].upper()} {order_params['quantity']} => Result: {status_icon} {status_txt}")
+                        
+                    executed = {'status': 'filled' if is_success else 'failed', 'avgPrice': current_price, 'executedQty': order_params['quantity']}
+                        
+                except Exception as e:
+                    log.error(f"Live order execution failed: {e}", exc_info=True)
+                    global_state.add_log(f"[Execution] ❌ Live Order Failed: {e}")
+                    return {
+                        'status': 'failed',
+                        'action': vote_result.action,
+                        'details': {'error': str(e)}
+                    }
             
             # ✅ Save Execution
             self.saver.save_execution({
@@ -735,59 +810,42 @@ class MultiAgentTradingBot:
         log.info(f"🚀 启动持续运行模式 (间隔: {interval_minutes}分钟)")
         global_state.is_running = True
         
-        # ✅ Hook Logger to Global State (Push logs to Dashboard)
-        # We use a wrapper to ensure we catch formatting
-        def dashboard_sink(message):
-            # message is a record object
-            record = message.record
-            msg_content = record["message"]
-            
-            # Filter out empty or duplicate if needed, but let's just push unique
-            if msg_content:
-                # Add [Component] tag if extra context exists
-                # But simple is better: just the message
-                global_state.add_log(msg_content)
-
-        # Add sink with strict format
-        try:
-            log.remove() # Remove default to avoid double printing if any
-            log.add(sys.stderr, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>")
-            log.add(dashboard_sink, format="{message}", level="INFO")
-            log.info("📊 Dashboard Logger Attached Successfully")
-        except Exception as e:
-            print(f"Failed to attach dashboard logger: {e}")
+        # Logger is configured in src.utils.logger, no need to override here.
+        # Dashboard logging is handled via global_state.add_log -> log.bind(dashboard=True)
 
         # Start Real-time Monitors
         self.start_account_monitor()
         
+        # Initialize with CLI argument, but allow API overrides later
+        if global_state.cycle_interval == 3: # Only override default if strictly needed
+             global_state.cycle_interval = interval_minutes
+        
+        log.info(f"🚀 启动持续交易模式 (间隔: {global_state.cycle_interval}m)")
+        
         try:
-            while True:
-                # Check Control State
-                current_mode = global_state.execution_mode
-                
-                if current_mode == "Stopped":
-                    print(f"\n🛑 系统已停止 (User Command)")
-                    break
-                    
-                if current_mode == "Paused":
-                    # Only print once or periodically
-                    if int(time.time()) % 30 == 0:
-                        print(f"\n⏸️ 系统已暂停... Waiting for resume command.")
+            while global_state.is_running:
+                # Check pause state
+                if global_state.execution_mode == 'Paused':
                     time.sleep(1)
                     continue
+                
+                if global_state.execution_mode == 'Stopped':
+                    break
 
-                # Normal Execution
                 # Use asyncio.run for the async cycle
                 result = asyncio.run(self.run_trading_cycle())
                 
                 print(f"\n循环结果: {result['status']}")
                 
+                # Dynamic Interval: specific to new requirement
+                current_interval = global_state.cycle_interval
+                
                 # 等待下一次检查
-                print(f"\n⏳ 等待 {interval_minutes} 分钟...")
+                print(f"\n⏳ 等待 {current_interval} 分钟...")
                 
                 # Sleep in chunks to allow responsive PAUSE/STOP
                 # Check every 1 second during the wait interval
-                wait_seconds = interval_minutes * 60
+                wait_seconds = current_interval * 60
                 for i in range(wait_seconds):
                     if global_state.execution_mode != "Running":
                         break
@@ -798,7 +856,7 @@ class MultiAgentTradingBot:
                         if remaining > 0:
                              print(f"⏳ Next cycle in {remaining}m...")
                              # Optional: add a quiet log or just keep alive
-                             # global_state.add_log(f"Waiting next cycle... ({remaining}m)")
+                             global_state.add_log(f"⏳ Waiting next cycle... ({remaining}m)")
 
                     time.sleep(1)
                 

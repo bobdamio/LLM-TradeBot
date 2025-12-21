@@ -570,3 +570,127 @@ tr:hover {
         height: auto;
     }
 }
+
+/* --- Agent Documentation Sidebar --- */
+.split-log-view {
+    flex-direction: row !important;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    height: 450px;
+    /* Fixed height to ensure alignment */
+}
+
+.agent-docs-sidebar {
+    min-width: 320px;
+    max-width: 320px;
+    background: rgba(0, 0, 0, 0.2);
+    border-right: 1px solid var(--glass-border);
+    padding: 20px;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: 100%;
+}
+
+
+.agent-doc-item {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 15px;
+}
+
+.agent-doc-item:last-child {
+    border-bottom: none;
+}
+
+.agent-doc-item h4 {
+    margin: 0 0 8px 0;
+    color: var(--neon-blue);
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.agent-doc-item p.role {
+    margin: 0 0 10px 0;
+    font-style: italic;
+    color: #cbd5e0;
+    line-height: 1.4;
+}
+
+.agent-doc-item ul {
+    margin: 0;
+    padding-left: 18px;
+    color: #a0aec0;
+}
+
+.agent-doc-item li {
+    margin-bottom: 6px;
+    line-height: 1.3;
+}
+
+.agent-doc-item strong {
+    color: #e2e8f0;
+    /* Neutral color instead of neon-green */
+    font-weight: 600;
+}
+
+/* Ensure logs take remaining space and match height */
+#logs-container {
+    padding: 20px;
+    background: transparent;
+    height: 100%;
+    /* Match parent height */
+    max-height: none;
+    /* Remove previous constraint */
+}
+
+/* Agent Title Colors */
+.agent-title.oracle {
+    color: #a29bfe !important;
+}
+
+.agent-title.strategist {
+    color: #00b894 !important;
+}
+
+.agent-title.critic {
+    color: #fdcb6e !important;
+}
+
+.agent-title.guardian {
+    color: #ff7675 !important;
+}
+
+/* --- Strict Alignment Fix --- */
+.compound-body.split-log-view {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    height: 450px !important;
+    overflow: hidden !important;
+    box-sizing: border-box;
+    padding: 0 !important;
+}
+
+.agent-docs-sidebar {
+    flex: 0 0 320px !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+#logs-container {
+    flex: 1 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto;
+    padding: 20px;
+    box-sizing: border-box;
+    background: transparent;
+}

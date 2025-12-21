@@ -131,7 +131,7 @@ class DecisionCoreAgent:
             if df_5m is not None and curr_price is not None:
                 regime = self.regime_detector.detect_regime(df_5m)
                 position = self.position_analyzer.analyze_position(df_5m, curr_price)
-                log.critic(f"市场检测: 状态={regime.get('regime')}, 位置={position.get('position_pct', 0):.1f}%", challenge=True)
+                # log.critic(f"市场检测: 状态={regime.get('regime')}, 位置={position.get('position_pct', 0):.1f}%", challenge=True)
 
         # 3. 提前过滤逻辑：震荡市+位置不佳
         if regime and position:

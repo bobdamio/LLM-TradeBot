@@ -1,3 +1,4 @@
+from src.utils.logger import log
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -95,6 +96,9 @@ class SharedState:
         self.recent_logs.append(f"[{timestamp}] {message}")
         if len(self.recent_logs) > 500:
             self.recent_logs.pop(0)
+            
+        # Push to file logger (Clean Trading Log)
+        log.bind(dashboard=True).info(message)
 
 # Global Singleton
 global_state = SharedState()
