@@ -22,18 +22,30 @@ import json
 from src.utils.logger import log
 from src.agents.position_analyzer import PositionAnalyzer
 from src.agents.regime_detector import RegimeDetector
+from src.agents.predict_agent import PredictResult
 
 
 @dataclass
 class SignalWeight:
-    """信号权重配置"""
-    trend_5m: float = 0.15
-    trend_15m: float = 0.25
-    trend_1h: float = 0.35
-    oscillator_5m: float = 0.08
-    oscillator_15m: float = 0.12
-    oscillator_1h: float = 0.15
-    # 其他扩展信号（如LLM、情绪分析）
+    """信号权重配置
+    
+    注意: 所有权重应该合计为 1.0 (不包括动态 sentiment)
+    当前配置: trend(0.45) + oscillator(0.20) + prophet(0.15) = 0.80
+    sentiment 使用动态权重 (0.20)
+    """
+    # 趋势信号 (合计 0.45)
+    trend_5m: float = 0.10
+    trend_15m: float = 0.15
+    trend_1h: float = 0.20
+    # 震荡信号 (合计 0.20)
+    oscillator_5m: float = 0.05
+    oscillator_15m: float = 0.07
+    oscillator_1h: float = 0.08
+    # Prophet ML 预测权重
+    prophet: float = 0.15
+    # 情绪信号 (动态权重，有数据时 0.20，无数据时 0)
+    sentiment: float = 0.20
+    # 其他扩展信号（如LLM）
     llm_signal: float = 0.0  # 待整合
 
 
@@ -83,12 +95,18 @@ class DecisionCoreAgent:
             'oscillator_1h': {'total': 0, 'correct': 0},
         }
         
-    async def make_decision(self, quant_analysis: Dict, market_data: Optional[Dict] = None) -> VoteResult:
+    async def make_decision(
+        self, 
+        quant_analysis: Dict, 
+        predict_result: Optional[PredictResult] = None,
+        market_data: Optional[Dict] = None
+    ) -> VoteResult:
         """
         执行加权投票决策
         
         Args:
             quant_analysis: QuantAnalystAgent的输出
+            predict_result: PredictAgent的输出 (ML预测)
             market_data: 包含 df_5m, df_15m, df_1h 和 current_price 的原始市场数据
             
         Returns:
@@ -111,16 +129,20 @@ class DecisionCoreAgent:
             'sentiment': sentiment_data.get('total_sentiment_score', 0)
         }
         
-        w_sentiment = 0.3 if scores.get('sentiment') != 0 else 0
+        # 集成 Prophet 预测得分
+        if predict_result:
+            # 将概率 (0~1) 映射到分数 (-100~+100)
+            # 0.5 -> 0, 1.0 -> 100, 0.0 -> -100
+            prob = predict_result.probability_up
+            prophet_score = (prob - 0.5) * 200
+            scores['prophet'] = prophet_score
+        else:
+            scores['prophet'] = 0.0
+        
+        # 计算动态 sentiment 权重 (有数据时使用配置权重，无数据时为 0)
+        has_sentiment = scores.get('sentiment', 0) != 0
+        w_sentiment = self.weights.sentiment if has_sentiment else 0.0
         w_others = 1.0 - w_sentiment
-
-        # Calculate vote details early for visibility
-        vote_details = {
-            key: scores[key] * getattr(self.weights, key, 1.0) * (w_others if key != 'sentiment' else 1.0)
-            for key in scores.keys()
-        }
-        # Add total strategist score for display (not used in weighted calc)
-        vote_details['strategist_total'] = quant_analysis.get('comprehensive', {}).get('total_score', 0)
 
         # 2. 市场状态与位置分析
         regime = None
@@ -131,16 +153,40 @@ class DecisionCoreAgent:
             if df_5m is not None and curr_price is not None:
                 regime = self.regime_detector.detect_regime(df_5m)
                 position = self.position_analyzer.analyze_position(df_5m, curr_price)
-                # log.critic(f"市场检测: 状态={regime.get('regime')}, 位置={position.get('position_pct', 0):.1f}%", challenge=True)
 
-        # 3. 提前过滤逻辑：震荡市+位置不佳
+        # 3. 加权计算（得分范围-100~+100）
+        weighted_score = (
+            (scores['trend_5m'] * self.weights.trend_5m +
+             scores['trend_15m'] * self.weights.trend_15m +
+             scores['trend_1h'] * self.weights.trend_1h +
+             scores['oscillator_5m'] * self.weights.oscillator_5m +
+             scores['oscillator_15m'] * self.weights.oscillator_15m +
+             scores['oscillator_1h'] * self.weights.oscillator_1h +
+             scores.get('prophet', 0) * self.weights.prophet) * w_others +
+            (scores.get('sentiment', 0) * w_sentiment)
+        )
+        
+        # 4. 计算各信号的实际贡献分 (用于 dashboard 显示)
+        vote_details = {
+            'trend_5m': scores['trend_5m'] * self.weights.trend_5m * w_others,
+            'trend_15m': scores['trend_15m'] * self.weights.trend_15m * w_others,
+            'trend_1h': scores['trend_1h'] * self.weights.trend_1h * w_others,
+            'oscillator_5m': scores['oscillator_5m'] * self.weights.oscillator_5m * w_others,
+            'oscillator_15m': scores['oscillator_15m'] * self.weights.oscillator_15m * w_others,
+            'oscillator_1h': scores['oscillator_1h'] * self.weights.oscillator_1h * w_others,
+            'prophet': scores.get('prophet', 0) * self.weights.prophet * w_others,
+            'sentiment': scores.get('sentiment', 0) * w_sentiment,
+            'strategist_total': quant_analysis.get('comprehensive', {}).get('score', 0)
+        }
+
+        # 5. 提前过滤逻辑：震荡市+位置不佳
         if regime and position:
             if regime['regime'] == 'choppy' and position['location'] == 'middle':
                 result = VoteResult(
                     action='hold',
                     confidence=10.0,
                     weighted_score=0,
-                    vote_details=vote_details,  # Include details even if filtered
+                    vote_details=vote_details,
                     multi_period_aligned=False,
                     reason=f"对抗式过滤: 震荡市且价格处于区间中部({position['position_pct']:.1f}%)，禁止开仓",
                     regime=regime,
@@ -148,26 +194,8 @@ class DecisionCoreAgent:
                 )
                 self.history.append(result)
                 return result
-
-        # 4. 加权计算（得分范围-100~+100）
         
-        weighted_score = (
-            (scores['trend_5m'] * self.weights.trend_5m +
-             scores['trend_15m'] * self.weights.trend_15m +
-             scores['trend_1h'] * self.weights.trend_1h +
-             scores['oscillator_5m'] * self.weights.oscillator_5m +
-             scores['oscillator_15m'] * self.weights.oscillator_15m +
-             scores['oscillator_1h'] * self.weights.oscillator_1h) * w_others +
-            (scores.get('sentiment', 0) * w_sentiment)
-        )
-        
-        # 5. 计算各信号的实际贡献分
-        vote_details = {
-            key: scores[key] * getattr(self.weights, key, 1.0) * (w_others if key != 'sentiment' else 1.0)
-            for key in scores.keys()
-        }
-        # Re-add strategist total score (was lost in reassignment)
-        vote_details['strategist_total'] = quant_analysis.get('comprehensive', {}).get('total_score', 0)
+        # 6. 多周期对齐检测
         
         # 6. 多周期对齐检测
         aligned, alignment_reason = self._check_multi_period_alignment(
@@ -211,6 +239,7 @@ class DecisionCoreAgent:
             aligned, 
             alignment_reason, 
             quant_analysis,
+            prophet_score=scores.get('prophet', 0),
             regime=regime
         )
         # 10. 构建结果
@@ -335,7 +364,9 @@ class DecisionCoreAgent:
         weighted_score: float,
         aligned: bool,
         alignment_reason: str,
+
         quant_analysis: Dict,
+        prophet_score: float = 0.0,
         regime: Optional[Dict] = None
     ) -> str:
         """生成决策原因（可解释性）"""
@@ -363,7 +394,8 @@ class DecisionCoreAgent:
             'trend_15m': trend_data.get('trend_15m_score', 0),
             'oscillator_1h': osc_data.get('osc_1h_score', 0),
             'oscillator_15m': osc_data.get('osc_15m_score', 0),
-            'sentiment': sentiment_data.get('total_sentiment_score', 0)
+            'sentiment': sentiment_data.get('total_sentiment_score', 0),
+            'prophet': prophet_score
         }
         sorted_signals = sorted(
             vote_details.items(), 
@@ -426,7 +458,9 @@ class DecisionCoreAgent:
             trend_1h=normalized_weights.get('trend_1h', self.weights.trend_1h),
             oscillator_5m=normalized_weights.get('oscillator_5m', self.weights.oscillator_5m),
             oscillator_15m=normalized_weights.get('oscillator_15m', self.weights.oscillator_15m),
+
             oscillator_1h=normalized_weights.get('oscillator_1h', self.weights.oscillator_1h),
+            prophet=normalized_weights.get('prophet', self.weights.prophet),
         )
         
         return new_weights

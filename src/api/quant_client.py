@@ -18,17 +18,30 @@ class QuantClient:
         self.session: Optional[aiohttp.ClientSession] = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        current_loop = asyncio.get_running_loop()
+        """获取或创建 aiohttp session，正确处理 event loop 变化"""
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
         
-        if self.session:
-            if self.session.closed:
-                self.session = None
-            elif self.session._loop is not current_loop:
-                # Session bound to a different/closed loop, discard it
-                self.session = None
-                
+        # 检查是否需要重新创建 session
+        need_new_session = False
+        
         if self.session is None:
+            need_new_session = True
+        elif self.session.closed:
+            need_new_session = True
+        elif hasattr(self.session, '_loop') and self.session._loop is not current_loop:
+            # Event loop 改变，需要关闭旧 session 并创建新的
+            try:
+                await self.session.close()
+            except Exception:
+                pass  # 忽略关闭错误
+            need_new_session = True
+                
+        if need_new_session:
             self.session = aiohttp.ClientSession(timeout=self.timeout)
+        
         return self.session
 
     async def fetch_coin_data(self, symbol: str = "BTCUSDT") -> Dict:

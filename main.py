@@ -91,7 +91,15 @@ class MultiAgentTradingBot:
         print("="*80)
         
         self.config = Config()
-        self.symbol = self.config.get('trading.symbol', 'BTCUSDT')
+        # 多币种支持: 读取 symbols 列表，兼容旧版 symbol 单值配置
+        symbols_config = self.config.get('trading.symbols', None)
+        if symbols_config:
+            self.symbols = symbols_config
+        else:
+            # 向后兼容: 使用旧版 trading.symbol 配置
+            self.symbols = [self.config.get('trading.symbol', 'BTCUSDT')]
+        self.primary_symbol = self.config.get('trading.primary_symbol', self.symbols[0])
+        self.current_symbol = self.primary_symbol  # 当前处理的交易对
         self.test_mode = test_mode
         
         # 交易参数
@@ -107,11 +115,10 @@ class MultiAgentTradingBot:
         self.execution_engine = ExecutionEngine(self.client, self.risk_manager)
         self.saver = DataSaver() # ✅ 初始化 Multi-Agent 数据保存器
         
-        # 初始化4大Agent
+        # 初始化共享 Agent (与币种无关)
         print("\n🚀 初始化Agent...")
         self.data_sync_agent = DataSyncAgent(self.client)
         self.quant_analyst = QuantAnalystAgent()
-        self.predict_agent = PredictAgent(horizon='30m')  # 🔮 预测预言家 (30分钟预测)
         self.decision_core = DecisionCoreAgent()
         self.risk_audit = RiskAuditAgent(
             max_leverage=10.0,
@@ -122,14 +129,19 @@ class MultiAgentTradingBot:
         self.processor = MarketDataProcessor()  # ✅ 初始化数据处理器
         self.feature_engineer = TechnicalFeatureEngineer()  # 🔮 特征工程器 for Prophet
         
+        # 🔮 为每个币种创建独立的 PredictAgent
+        self.predict_agents = {}
+        for symbol in self.symbols:
+            self.predict_agents[symbol] = PredictAgent(horizon='30m', symbol=symbol)
+        
         print("  ✅ DataSyncAgent 已就绪")
         print("  ✅ QuantAnalystAgent 已就绪")
-        print("  ✅ PredictAgent 已就绪")
+        print(f"  ✅ PredictAgent 已就绪 (共 {len(self.symbols)} 个币种)")
         print("  ✅ DecisionCoreAgent 已就绪")
         print("  ✅ RiskAuditAgent 已就绪")
         
         print(f"\n⚙️  交易配置:")
-        print(f"  - 交易对: {self.symbol}")
+        print(f"  - 交易对: {', '.join(self.symbols)}")
         print(f"  - 最大单笔: ${self.max_position_size:.2f} USDT")
         print(f"  - 杠杆倍数: {self.leverage}x")
         print(f"  - 止损: {self.stop_loss_pct}%")
@@ -154,7 +166,7 @@ class MultiAgentTradingBot:
             }
         """
         print(f"\n{'='*80}")
-        print(f"🔄 启动交易审计循环 | {datetime.now().strftime('%H:%M:%S')} | {self.symbol}")
+        print(f"🔄 启动交易审计循环 | {datetime.now().strftime('%H:%M:%S')} | {self.current_symbol}")
         print(f"{'='*80}")
         
         # Update Dashboard Status
@@ -162,15 +174,12 @@ class MultiAgentTradingBot:
         # Removed verbose log: Starting trading cycle
         
         try:
-            # ✅ Increment cycle counter and generate cycle ID
-            global_state.cycle_counter += 1
+            # ✅ 使用 run_continuous 中已设置的周期信息
             cycle_num = global_state.cycle_counter
-            cycle_id = f"cycle_{cycle_num:04d}_{int(time.time())}"
-            global_state.current_cycle_id = cycle_id
+            cycle_id = global_state.current_cycle_id
             
-            print(f"🔄 Cycle #{cycle_num} | ID: {cycle_id}")
-            global_state.add_log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            global_state.add_log(f"🔄 Cycle #{cycle_num} started | ID: {cycle_id}")
+            # 每个币种的子日志
+            global_state.add_log(f"📊 [{self.current_symbol}] 开始分析...")
             
             # ✅ Generate snapshot_id for this cycle (legacy compatibility)
             snapshot_id = f"snap_{int(time.time())}"
@@ -178,7 +187,7 @@ class MultiAgentTradingBot:
             # Step 1: 采样 - 数据先知 (The Oracle)
             print("\n[Step 1/4] 🕵️ 数据先知 (The Oracle) - 异步数据采集...")
             global_state.oracle_status = "Fetching Data..." 
-            market_snapshot = await self.data_sync_agent.fetch_all_timeframes(self.symbol)
+            market_snapshot = await self.data_sync_agent.fetch_all_timeframes(self.current_symbol)
             global_state.oracle_status = "Data Ready"
 
             # ✅ Save Market Data & Process Indicators
@@ -186,15 +195,15 @@ class MultiAgentTradingBot:
             for tf in ['5m', '15m', '1h']:
                 raw_klines = getattr(market_snapshot, f'raw_{tf}')
                 # 保存原始数据
-                self.saver.save_market_data(raw_klines, self.symbol, tf)
+                self.saver.save_market_data(raw_klines, self.current_symbol, tf)
                 
                 # 处理并保存指标 (Process indicators)
-                df_with_indicators = self.processor.process_klines(raw_klines, self.symbol, tf)
-                self.saver.save_indicators(df_with_indicators, self.symbol, tf, snapshot_id)
+                df_with_indicators = self.processor.process_klines(raw_klines, self.current_symbol, tf)
+                self.saver.save_indicators(df_with_indicators, self.current_symbol, tf, snapshot_id)
                 
                 # 提取并保存特征 (Extract features)
                 features_df = self.processor.extract_feature_snapshot(df_with_indicators)
-                self.saver.save_features(features_df, self.symbol, tf, snapshot_id)
+                self.saver.save_features(features_df, self.current_symbol, tf, snapshot_id)
                 
                 # 存入字典供后续步骤复用
                 processed_dfs[tf] = df_with_indicators
@@ -244,7 +253,7 @@ class MultiAgentTradingBot:
             global_state.add_log(f"👨‍🔬 QuantAnalystAgent (The Strategist): {t_str} | {o_str} | {s_str} => Score: {s_score:.0f}/100")
             
             # ✅ Save Quant Analysis (Analytics)
-            self.saver.save_context(quant_analysis, self.symbol, 'analytics', snapshot_id)
+            self.saver.save_context(quant_analysis, self.current_symbol, 'analytics', snapshot_id)
             
             # Step 2.5: 预测 - 预测预言家 (The Prophet)
             print("[Step 2.5/5] 🔮 预测预言家 (The Prophet) - 计算上涨概率...")
@@ -262,7 +271,7 @@ class MultiAgentTradingBot:
                 predict_features = {}
             
             # 调用 PredictAgent
-            predict_result = await self.predict_agent.predict(predict_features)
+            predict_result = await self.predict_agents[self.current_symbol].predict(predict_features)
             
             # 更新全局状态
             global_state.prophet_probability = predict_result.probability_up
@@ -290,7 +299,7 @@ class MultiAgentTradingBot:
             }
             # 彻底转换整个字典
             prediction_record = to_serializable(prediction_record)
-            self.saver.save_prediction(prediction_record, self.symbol, snapshot_id)
+            self.saver.save_prediction(prediction_record, self.current_symbol, snapshot_id)
             
             # LOG 2.5: Prophet
             prob_pct = predict_result.probability_up * 100
@@ -312,12 +321,13 @@ class MultiAgentTradingBot:
             
             vote_result = await self.decision_core.make_decision(
                 quant_analysis,
+                predict_result=predict_result,
                 market_data=market_data
             )
             
             # ✅ Decision Recording moved after Risk Audit for complete context
             # Saved to file still happens here for "raw" decision
-            self.saver.save_decision(asdict(vote_result), self.symbol, snapshot_id, cycle_id=cycle_id)
+            self.saver.save_decision(asdict(vote_result), self.current_symbol, snapshot_id, cycle_id=cycle_id)
             
             # ✅ Generate and Save LLM Context (LLM Logs)
             # 记录输入给决策引擎的完整上下文以及最终投票结果
@@ -327,7 +337,7 @@ class MultiAgentTradingBot:
             )
             self.saver.save_llm_log(
                 content=f"PROMPT: N/A (Agent Voting Consensus)\n\n{llm_context}",
-                symbol=self.symbol,
+                symbol=self.current_symbol,
                 snapshot_id=snapshot_id
             )
             
@@ -359,7 +369,7 @@ class MultiAgentTradingBot:
                 # Update State with WAIT/HOLD decision
                 decision_dict = asdict(vote_result)
                 decision_dict['action'] = actual_action  # ✅ Use 'wait' instead of 'hold'
-                decision_dict['symbol'] = self.symbol
+                decision_dict['symbol'] = self.current_symbol
                 decision_dict['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 decision_dict['cycle_number'] = global_state.cycle_counter
                 decision_dict['cycle_id'] = global_state.current_cycle_id
@@ -466,7 +476,7 @@ class MultiAgentTradingBot:
             
             # ✅ Update Global State with FULL Decision info (Vote + Audit)
             decision_dict = asdict(vote_result)
-            decision_dict['symbol'] = self.symbol
+            decision_dict['symbol'] = self.current_symbol
             decision_dict['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             decision_dict['cycle_number'] = global_state.cycle_counter
             decision_dict['cycle_id'] = global_state.current_cycle_id
@@ -496,7 +506,7 @@ class MultiAgentTradingBot:
                     'warnings': audit_result.warnings,
                     'order_params': order_params
                 },
-                symbol=self.symbol,
+                symbol=self.current_symbol,
                 snapshot_id=snapshot_id
             )
             
@@ -541,17 +551,17 @@ class MultiAgentTradingBot:
 
                  # ✅ Save Execution (Simulated)
                 self.saver.save_execution({
-                    'symbol': self.symbol,
+                    'symbol': self.current_symbol,
                     'action': 'SIMULATED_EXECUTION',
                     'params': order_params,
                     'status': 'success',
                     'timestamp': datetime.now().isoformat()
-                }, self.symbol)
+                }, self.current_symbol)
                 
                 # ✅ Save Trade in persistent history
                 trade_record = {
                     'action': order_params['action'].upper(),
-                    'symbol': self.symbol,
+                    'symbol': self.current_symbol,
                     'price': current_price,
                     'quantity': order_params['quantity'],
                     'cost': current_price * order_params['quantity'],
@@ -599,12 +609,12 @@ class MultiAgentTradingBot:
             
             # ✅ Save Execution
             self.saver.save_execution({
-                'symbol': self.symbol,
+                'symbol': self.current_symbol,
                 'action': 'REAL_EXECUTION',
                 'params': order_params,
                 'status': 'success' if executed else 'failed',
                 'timestamp': datetime.now().isoformat()
-            }, self.symbol)
+            }, self.current_symbol)
             
             if executed:
                 print("  ✅ 订单执行成功!")
@@ -612,7 +622,7 @@ class MultiAgentTradingBot:
                 
                 # 记录交易日志
                 trade_logger.log_open_position(
-                    symbol=self.symbol,
+                    symbol=self.current_symbol,
                     side=order_params['action'].upper(),
                     decision=order_params,
                     execution_result={
@@ -641,7 +651,7 @@ class MultiAgentTradingBot:
                 # ✅ Save Trade in persistent history
                 trade_record = {
                     'action': order_params['action'].upper(),
-                    'symbol': self.symbol,
+                    'symbol': self.current_symbol,
                     'price': entry_price,
                     'quantity': order_params['quantity'],
                     'cost': entry_price * order_params['quantity'],
@@ -732,10 +742,10 @@ class MultiAgentTradingBot:
     def _get_current_position(self) -> Optional[PositionInfo]:
         """获取当前持仓"""
         try:
-            pos = self.client.get_futures_position(self.symbol)
+            pos = self.client.get_futures_position(self.current_symbol)
             if pos and abs(pos['position_amt']) > 0:
                 return PositionInfo(
-                    symbol=self.symbol,
+                    symbol=self.current_symbol,
                     side='long' if pos['position_amt'] > 0 else 'short',
                     entry_price=pos['entry_price'],
                     quantity=abs(pos['position_amt']),
@@ -759,14 +769,14 @@ class MultiAgentTradingBot:
         try:
             # 设置杠杆
             self.client.set_leverage(
-                symbol=self.symbol,
+                symbol=self.current_symbol,
                 leverage=order_params['leverage']
             )
             
             # 市价开仓
             side = 'BUY' if order_params['action'] == 'long' else 'SELL'
             order = self.client.place_futures_market_order(
-                symbol=self.symbol,
+                symbol=self.current_symbol,
                 side=side,
                 quantity=order_params['quantity']
             )
@@ -776,7 +786,7 @@ class MultiAgentTradingBot:
             
             # 设置止损止盈
             self.execution_engine.set_stop_loss_take_profit(
-                symbol=self.symbol,
+                symbol=self.current_symbol,
                 position_side='LONG' if order_params['action'] == 'long' else 'SHORT',
                 stop_loss=order_params['stop_loss'],
                 take_profit=order_params['take_profit']
@@ -879,12 +889,14 @@ class MultiAgentTradingBot:
         # 🔮 启动 Prophet 自动训练器 (每 2 小时重新训练)
         from src.models.prophet_model import ProphetAutoTrainer, HAS_LIGHTGBM
         if HAS_LIGHTGBM:
+            # 为主交易对创建自动训练器
+            primary_agent = self.predict_agents[self.primary_symbol]
             self.auto_trainer = ProphetAutoTrainer(
-                predict_agent=self.predict_agent,
+                predict_agent=primary_agent,
                 binance_client=self.client,
                 interval_hours=2.0,  # 每 2 小时训练一次
                 training_days=7,     # 使用最近 7 天数据
-                symbol=self.symbol
+                symbol=self.primary_symbol
             )
             self.auto_trainer.start()
         
@@ -903,10 +915,26 @@ class MultiAgentTradingBot:
                 if global_state.execution_mode == 'Stopped':
                     break
 
-                # Use asyncio.run for the async cycle
-                result = asyncio.run(self.run_trading_cycle())
+                # ✅ 统一周期计数: 在遍历币种前递增一次
+                global_state.cycle_counter += 1
+                cycle_num = global_state.cycle_counter
+                cycle_id = f"cycle_{cycle_num:04d}_{int(time.time())}"
+                global_state.current_cycle_id = cycle_id
                 
-                print(f"\n循环结果: {result['status']}")
+                print(f"\n{'='*80}")
+                print(f"🔄 Cycle #{cycle_num} | 分析 {len(self.symbols)} 个交易对")
+                print(f"{'='*80}")
+                global_state.add_log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                global_state.add_log(f"🔄 Cycle #{cycle_num} started | Symbols: {', '.join(self.symbols)}")
+
+                # 🔄 多币种顺序处理: 依次分析每个交易对
+                for symbol in self.symbols:
+                    self.current_symbol = symbol  # 设置当前处理的交易对
+                    
+                    # Use asyncio.run for the async cycle
+                    result = asyncio.run(self.run_trading_cycle())
+                    
+                    print(f"  [{symbol}] 结果: {result['status']}")
                 
                 # Dynamic Interval: specific to new requirement
                 current_interval = global_state.cycle_interval

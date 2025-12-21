@@ -73,15 +73,19 @@ class ProphetMLModel:
     PREDICTION_HORIZON_MINUTES = 30  # 预测未来 30 分钟
     UP_THRESHOLD = 0.001  # 涨幅阈值: 0.1%
     
-    def __init__(self, model_path: Optional[str] = None):
+    def __init__(self, model_path: Optional[str] = None, symbol: str = 'BTCUSDT'):
         """
         初始化 Prophet ML 模型
         
         Args:
             model_path: 预训练模型路径 (可选)
+            symbol: 交易对符号 (用于生成模型文件名)
         """
         self.model = None
-        self.model_path = model_path or 'models/prophet_lgb.pkl'
+        self.symbol = symbol
+        # 生成 symbol-specific 模型路径
+        default_path = f'models/prophet_lgb_{symbol}.pkl'
+        self.model_path = model_path or default_path
         self.feature_names: List[str] = []
         self.is_trained = False
         
@@ -395,7 +399,7 @@ class ProphetAutoTrainer:
         self.interval_hours = interval_hours
         self.training_days = training_days
         self.symbol = symbol
-        self.model_path = 'models/prophet_lgb.pkl'
+        self.model_path = f'models/prophet_lgb_{symbol}.pkl'
         
         self._running = False
         self._thread = None

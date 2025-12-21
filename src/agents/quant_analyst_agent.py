@@ -20,6 +20,7 @@ from ta.trend import MACD, EMAIndicator
 
 from src.agents.data_sync_agent import MarketSnapshot
 from src.utils.logger import log
+from src.utils.oi_tracker import oi_tracker
 
 
 class TrendSubAgent:
@@ -286,7 +287,11 @@ class OscillatorSubAgent:
             # Granular scores for DecisionCoreAgent
             'osc_5m_score': osc_5m_score,
             'osc_15m_score': osc_15m_score,
-            'osc_1h_score': osc_1h_score
+            'osc_1h_score': osc_1h_score,
+            # RSI values for dashboard display
+            'rsi_5m': details.get('5m_rsi', 50),
+            'rsi_15m': details.get('15m_rsi', 50),
+            'rsi_1h': details.get('1h_rsi', 50)
         }
 
 
@@ -342,9 +347,35 @@ class SentimentSubAgent:
             else:
                 details['funding_signal'] = "中性"
 
-        # 3. 持仓量 (Open Interest) - 跨源验证
+        # 3. 持仓量 (Open Interest) - 使用 OI 历史追踪器
+        oi_change_pct = 0.0
+        oi_change_1h = 0.0
+        
         if b_oi:
-            details['binance_oi_value'] = b_oi.get('open_interest', 0)
+            oi_value = b_oi.get('open_interest', 0)
+            symbol = b_oi.get('symbol', 'BTCUSDT')
+            
+            # 🔮 从 OI 追踪器获取变化率
+            oi_stats = oi_tracker.get_stats(symbol)
+            oi_change_pct = oi_stats.get('change_24h', 0.0)
+            oi_change_1h = oi_stats.get('change_1h', 0.0)
+            
+            details['binance_oi_value'] = oi_value
+            details['oi_change_24h_pct'] = oi_change_pct
+            details['oi_change_1h_pct'] = oi_change_1h
+            details['oi_records'] = oi_stats.get('records', 0)
+            
+            # OI 显著变化时影响得分
+            if oi_change_pct > 10:  # OI 增加 >10%：市场活跃
+                score += 10
+            elif oi_change_pct < -10:  # OI 减少 >10%：资金离场
+                score -= 10
+            
+            # 1h OI 变化也影响得分 (短期监测)
+            if oi_change_1h > 5:  # 1h 内 OI 增加 >5%
+                score += 5
+            elif oi_change_1h < -5:  # 1h 内 OI 减少 >5%
+                score -= 5
             
         score = max(-100, min(100, score))
         
@@ -353,7 +384,8 @@ class SentimentSubAgent:
             'score': score,
             'details': details,
             'confidence': abs(score),
-            'total_sentiment_score': score
+            'total_sentiment_score': score,
+            'oi_change_24h_pct': oi_change_pct  # 供 dashboard 显示
         }
 
 

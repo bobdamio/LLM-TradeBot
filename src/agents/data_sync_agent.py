@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from src.api.binance_client import BinanceClient
 from src.api.quant_client import quant_client
 from src.utils.logger import log
+from src.utils.oi_tracker import oi_tracker
 
 
 @dataclass
@@ -166,6 +167,14 @@ class DataSyncAgent:
             binance_oi=b_oi
         )
         
+        # 🔮 记录 OI 到历史追踪器
+        if b_oi and b_oi.get('open_interest', 0) > 0:
+            oi_tracker.record(
+                symbol=symbol,
+                oi_value=b_oi['open_interest'],
+                timestamp=b_oi.get('timestamp')
+            )
+        
         # 缓存最新快照
         self.last_snapshot = snapshot
         
@@ -231,18 +240,21 @@ class DataSyncAgent:
             diff_5m_15m = abs(t5m - t15m)
             diff_5m_1h = abs(t5m - t1h)
             
-            # 允许的时间差：5分钟 = 300,000毫秒
-            max_diff = 300000
+            # 使用更宽松的容差:
+            # - 5m vs 15m: 允许 15 分钟差异 (15m K线周期)
+            # - 5m vs 1h: 允许 1 小时差异 (1h K线周期)
+            max_diff_15m = 900000   # 15 分钟 = 900,000 ms
+            max_diff_1h = 3600000   # 1 小时 = 3,600,000 ms
             
-            if diff_5m_15m > max_diff or diff_5m_1h > max_diff:
+            # 只有严重偏差才警告
+            if diff_5m_15m > max_diff_15m or diff_5m_1h > max_diff_1h:
                 log.warning(
                     f"⚠️ 时间对齐异常: "
-                    f"5m vs 15m = {diff_5m_15m}ms, "
-                    f"5m vs 1h = {diff_5m_1h}ms"
+                    f"5m vs 15m = {diff_5m_15m/1000:.0f}s, "
+                    f"5m vs 1h = {diff_5m_1h/1000:.0f}s"
                 )
                 return False
             
-            log.oracle("✅ 时间对齐验证通过")
             return True
             
         except Exception as e:

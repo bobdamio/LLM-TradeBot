@@ -17,7 +17,8 @@ deepseek:
 
 # 交易配置
 trading:
-  symbol: "BTCUSDT"
+  symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]  # 支持多币种
+  primary_symbol: "BTCUSDT"  # 主要交易对（向后兼容）
   timeframes: ["1m", "5m", "15m", "1h"]
   leverage: 5
   

@@ -54,6 +54,9 @@ function initChart() {
     });
 }
 
+// 全局存储决策历史以便过滤
+let allDecisionHistory = [];
+
 function updateDashboard() {
     fetch(API_URL)
         .then(response => response.json())
@@ -74,12 +77,42 @@ function updateDashboard() {
             }
             if (data.chart_data && data.chart_data.equity) renderChart(data.chart_data.equity);
 
-            // Layout v2 Renderers
-            if (data.decision_history) renderDecisionTable(data.decision_history);
+            // Layout v2 Renderers with Filtering
+            if (data.decision_history) {
+                allDecisionHistory = data.decision_history;
+                applyDecisionFilters(); // 应用当前过滤条件
+            }
             if (data.trade_history) renderTradeHistory(data.trade_history);
         })
         .catch(err => console.error('Error fetching data:', err));
 }
+
+// 决策表过滤函数
+function applyDecisionFilters() {
+    const symbolFilter = document.getElementById('filter-symbol')?.value || 'all';
+    const resultFilter = document.getElementById('filter-result')?.value || 'all';
+
+    let filtered = allDecisionHistory;
+
+    // 按币种过滤
+    if (symbolFilter !== 'all') {
+        filtered = filtered.filter(d => d.symbol === symbolFilter);
+    }
+
+    // 按结果过滤
+    if (resultFilter !== 'all') {
+        filtered = filtered.filter(d => {
+            const action = (d.action || '').toLowerCase();
+            return action.includes(resultFilter);
+        });
+    }
+
+    renderDecisionTable(filtered);
+}
+
+// 过滤器事件监听
+document.getElementById('filter-symbol')?.addEventListener('change', applyDecisionFilters);
+document.getElementById('filter-result')?.addEventListener('change', applyDecisionFilters);
 
 function renderTradeHistory(trades) {
     const tbody = document.querySelector('#trade-table tbody');
@@ -357,19 +390,8 @@ document.getElementById('btn-pause').addEventListener('click', () => sendControl
 document.getElementById('btn-stop').addEventListener('click', () => sendControl('stop'));
 document.getElementById('btn-restart').addEventListener('click', () => sendControl('restart'));
 
-// Symbol Selector
-const symbolSelector = document.getElementById('symbol-selector');
-if (symbolSelector) {
-    symbolSelector.addEventListener('change', (e) => {
-        const newSymbol = e.target.value;
-        console.log('Symbol changed to:', newSymbol);
-        // Note: Backend currently only supports BTCUSDT
-        // This is a UI placeholder for future multi-symbol support
-        alert(`Symbol switching to ${newSymbol} - Feature coming soon!\nCurrently only BTCUSDT is supported.`);
-        // Reset to BTCUSDT
-        e.target.value = 'BTCUSDT';
-    });
-}
+// Symbol Selector - handled directly in index.html by TradingView loader
+// (K-Line chart now dynamically reloads on symbol change)
 
 // Interval Selector
 const intervalSelector = document.getElementById('interval-selector');

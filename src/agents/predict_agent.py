@@ -105,24 +105,27 @@ class PredictAgent:
     BB_LOW_THRESHOLD = 20
     BB_HIGH_THRESHOLD = 80
     
-    def __init__(self, horizon: str = '30m', model_path: str = 'models/prophet_lgb.pkl'):
+    def __init__(self, horizon: str = '30m', symbol: str = 'BTCUSDT', model_path: str = None):
         """
         初始化预测预言家 (The Prophet)
         
         Args:
             horizon: 预测时间范围 (默认 30m - 与 ML 模型 label 一致)
-            model_path: ML 模型文件路径
+            symbol: 交易对符号 (用于加载对应模型)
+            model_path: ML 模型文件路径 (可选，默认根据 symbol 生成)
         """
         self.horizon = horizon
+        self.symbol = symbol
         self.history: List[PredictResult] = []
         self.ml_model = None
-        self.model_path = model_path
+        # 生成 symbol-specific 模型路径
+        self.model_path = model_path or f'models/prophet_lgb_{symbol}.pkl'
         
         # 尝试加载 ML 模型
         self._try_load_ml_model()
         
         mode_str = "ML 模型" if self.ml_model is not None else "规则评分"
-        log.info(f"🔮 预测预言家 (The Prophet) 初始化完成 | 预测周期: {horizon} | 模式: {mode_str}")
+        log.info(f"🔮 预测预言家 (The Prophet) 初始化完成 | 预测周期: {horizon} | 币种: {symbol} | 模式: {mode_str}")
     
     def _try_load_ml_model(self):
         """尝试加载 ML 模型"""
