@@ -131,11 +131,32 @@ LLM-TradeBot/
 
 ### 对抗式 Multi-Agent 协作流程
 
-1. **🕵️ DataSyncAgent**: 异步并发获取多周期 (5m, 15m, 1h) K线及外部量化数据 (Netflow, Long/Short Ratio)，确保计算快照的一致性。
-2. **👨‍🔬 QuantAnalystAgent**: 负责多维度信号提取。内部集成 3 个子 Agent（趋势、震荡、情绪），结合原生指标与外部量化数据输出综合分值。
-3. **⚖️ DecisionCoreAgent**: **核心对抗层**。集成位置感知、状态检测及 6 信号源加权投票机制，根据市场环境对量化信号进行“洗礼”，输出高质决策。
-4. **🛡️ RiskAuditAgent**: **安全终审官**。对 DecisionCore 的输出进行物理隔离审计，确保风险敞口和 R/R 符合对抗要求。
-5. **🚀 ExecutionEngine**: 负责交易信号的最后 100 毫秒执行及全生命周期订单追踪。
+1. **🕵️ DataSyncAgent (The Oracle)**
+    - **角色**: 统一数据提供者。
+    - **职责**: 异步并发采集并对齐多周期 K 线 (5m, 15m, 1h) 及外部量化数据 (网络流量, 多空比)，确保市场快照的一致性。
+
+2. **👨‍🔬 QuantAnalystAgent (The Strategist)**
+    - **角色**: 信号生成器。
+    - **组成**:
+        - `TrendSubAgent`: 跨周期分析 EMA/MACD。
+        - `OscillatorSubAgent`: 利用 RSI/布林带检测反转区间。
+        - `SentimentSubAgent`: 整合资金费率、持仓量等外部数据。
+    - **输出**: 原始综合得分及详细的子信号拆解。
+
+3. **⚖️ DecisionCoreAgent (The Critic)**
+    - **角色**: **对抗式判官**。
+    - **职责**:
+        - **环境感知**: 使用 `RegimeDetector` 识别市场状态 (趋势/震荡) 并利用 `PositionAnalyzer` 定位价格历史位置。
+        - **加权投票**: 结合当前市场状态，动态调整权重，对策略师的细粒度信号进行二次评估。
+        - **输出**: 最终交易意图 (做多/做空/观望) 及信心评分。
+
+4. **🛡️ RiskAuditAgent (The Guardian)**
+    - **角色**: 风控官。
+    - **职责**: 物理独立的审计层。检查最大回撤保护、盈亏比 (R/R) 要求及风险敞口限制。拥有 **一票否决权**，可阻断高信心但高风险的交易。
+
+5. **🚀 ExecutionEngine**
+    - **角色**: 狙击手。
+    - **职责**: 在 K 线收盘前的最后几秒内精准执行，并管理订单生命周期及状态更新。
 
 ### 协作时序图
 

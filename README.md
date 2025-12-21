@@ -131,11 +131,32 @@ LLM-TradeBot/
 
 ### Adversarial Multi-Agent Workflow
 
-1. **🕵️ DataSyncAgent**: Asynchronously fetches multi-timeframe (5m, 15m, 1h) K-lines & external quant data (Netflow, Long/Short Ratio) to ensure snapshot consistency.
-2. **👨‍🔬 QuantAnalystAgent**: Responsible for multi-dimensional signal extraction. Integrates 3 Sub-Agents (Trend, Oscillator, Sentiment) to output comprehensive scores combining native indicators & external data.
-3. **⚖️ DecisionCoreAgent**: **The Core Adversarial Layer**. Integrates position awareness, regime detection, and a 6-source weighted voting mechanism to "cleanse" quantitative signals based on market environment, outputting high-quality decisions.
-4. **🛡️ RiskAuditAgent**: **The Final Guard**. Performs physical isolation auditing on DecisionCore outputs, ensuring risk exposure and R/R meet adversarial requirements.
-5. **🚀 ExecutionEngine**: Handles the final 100ms execution of trading signals and full lifecycle order tracking.
+1. **🕵️ DataSyncAgent (The Oracle)**
+    - **Role**: Unified Data Provider.
+    - **Action**: Asynchronously fetches and aligns multi-timeframe K-lines (5m, 15m, 1h) and external quant data (Netflow, LSR) to ensure a consistent market snapshot.
+
+2. **👨‍🔬 QuantAnalystAgent (The Strategist)**
+    - **Role**: Signal Generator.
+    - **Composition**:
+        - `TrendSubAgent`: Analyzes EMA/MACD across timeframes.
+        - `OscillatorSubAgent`: Detects reversal zones using RSI/Bollinger Bands.
+        - `SentimentSubAgent`: Incorporates external data like Funding Rates and Open Interest.
+    - **Output**: A raw comprehensive score and detailed sub-signal breakdown.
+
+3. **⚖️ DecisionCoreAgent (The Critic)**
+    - **Role**: **Adversarial Judge**.
+    - **Action**:
+        - **Contextualization**: Uses `RegimeDetector` to identify market state (Trending/Choppy) and `PositionAnalyzer` to locate price relative to history.
+        - **Weighted Voting**: Re-evaluates granular signals from the Strategist with dynamic weights adapted to the current regime.
+        - **Output**: The final trading intent (Long/Short/Wait) with a confidence score.
+
+4. **🛡️ RiskAuditAgent (The Guardian)**
+    - **Role**: Risk Controller.
+    - **Action**: Physically independent audit layer. Checks Max Drawdown protection, R/R requirements, and exposure limits. Has **Veto Power** to block high-risk trades regardless of high confidence.
+
+5. **🚀 ExecutionEngine**
+    - **Role**: Sniper.
+    - **Action**: Precision execution within the closing seconds of the candle, handling order lifecycle and state updates.
 
 ### Collaboration Sequence
 
