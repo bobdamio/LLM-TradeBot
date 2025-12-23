@@ -101,6 +101,22 @@ After startup, visit: **<http://localhost:8000>**
 - **📜 Trade History**: Complete record of all trades with Open/Close cycles and PnL statistics
 - **📡 Live Log Output**: Real-time scrolling logs with highlighted Agent tags (Oracle, Strategist, Critic, Guardian), 500-line history buffer
 
+#### 5. Common Operations
+
+```bash
+# Stop the bot
+pkill -f "python main.py"
+
+# Restart the bot (Test Mode)
+pkill -f "python main.py"; sleep 2; python main.py --test --mode continuous
+
+# View running processes
+ps aux | grep "python main.py"
+
+# View logs in terminal (if running in background)
+tail -f logs/trading_$(date +%Y%m%d).log
+```
+
 ---
 
 ## 📁 Project Structure
