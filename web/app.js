@@ -274,34 +274,69 @@ function renderDecisionTable(history, positions = []) {
             return `<span class="val ${cls}">${val}</span>`;
         };
 
-        // Extract Agent Scores (Semantic)
-        const stratHtml = fmtScore('strategist_total');
-        const trend1hHtml = fmtScore('trend_1h');
-        const osc1hHtml = fmtScore('oscillator_1h');
-        const sentHtml = fmtScore('sentiment');
+        // Helper to get directional icon and color
+        const getDirectionIcon = (score) => {
+            if (score > 30) return { icon: '📈', cls: 'pos', dir: 'UP' };
+            if (score < -30) return { icon: '📉', cls: 'neg', dir: 'DN' };
+            return { icon: '➖', cls: 'neutral', dir: 'NEU' };
+        };
 
-        // Combine 1h signals (Compact view)
-        const signal1h = `<div style="font-size:0.75em">T:${trend1hHtml}<br>O:${osc1hHtml}</div>`;
 
-        // Multi-period signals (15m, 5m) - Semantic
-        const trend15mHtml = fmtScore('trend_15m');
-        const osc15mHtml = fmtScore('oscillator_15m');
 
-        // Combine 15m and 5m signals (Compact view)
-        // If semantic is available, we might want to show abbreviated icons or short text
-        // For compact cells, let's just use the short semantic
-        const signal15m = `<div style="font-size:0.75em">T:${trend15mHtml}<br>O:${osc15mHtml}</div>`;
+        // 1h Signal (Trend + Oscillator combined)
+        let signal1h = '<span class="cell-na" style="font-size:0.75em">-</span>';
+        if (d.vote_details) {
+            const tScore = d.vote_details.trend_1h || 0;
+            const oScore = d.vote_details.oscillator_1h || 0;
+            const tDir = getDirectionIcon(tScore);
+            const oDir = getDirectionIcon(oScore);
+            signal1h = `<div style="font-size:0.7em">
+                <span class="val ${tDir.cls}" title="Trend: ${Math.round(tScore)}">T:${tDir.dir}</span><br/>
+                <span class="val ${oDir.cls}" title="Osc: ${Math.round(oScore)}">O:${oDir.dir}</span>
+            </div>`;
+        }
 
-        const trend5mHtml = fmtScore('trend_5m');
-        const osc5mHtml = fmtScore('oscillator_5m');
-        const signal5m = `<div style="font-size:0.75em">T:${trend5mHtml}<br>O:${osc5mHtml}</div>`;
+        // 15m Signal
+        let signal15m = '<span class="cell-na" style="font-size:0.75em">-</span>';
+        if (d.vote_details) {
+            const tScore = d.vote_details.trend_15m || 0;
+            const oScore = d.vote_details.oscillator_15m || 0;
+            const tDir = getDirectionIcon(tScore);
+            const oDir = getDirectionIcon(oScore);
+            signal15m = `<div style="font-size:0.7em">
+                <span class="val ${tDir.cls}" title="Trend: ${Math.round(tScore)}">T:${tDir.dir}</span><br/>
+                <span class="val ${oDir.cls}" title="Osc: ${Math.round(oScore)}">O:${oDir.dir}</span>
+            </div>`;
+        }
+
+        // 5m Signal
+        let signal5m = '<span class="cell-na" style="font-size:0.75em">-</span>';
+        if (d.vote_details) {
+            const tScore = d.vote_details.trend_5m || 0;
+            const oScore = d.vote_details.oscillator_5m || 0;
+            const tDir = getDirectionIcon(tScore);
+            const oDir = getDirectionIcon(oScore);
+            signal5m = `<div style="font-size:0.7em">
+                <span class="val ${tDir.cls}" title="Trend: ${Math.round(tScore)}">T:${tDir.dir}</span><br/>
+                <span class="val ${oDir.cls}" title="Osc: ${Math.round(oScore)}">O:${oDir.dir}</span>
+            </div>`;
+        }
+
+        // Sentiment with icon
+        let sentHtml = '<span class="cell-na">-</span>';
+        if (d.vote_details && d.vote_details.sentiment !== undefined) {
+            const score = Math.round(d.vote_details.sentiment);
+            const { icon, cls } = getDirectionIcon(score);
+            sentHtml = `<span class="val ${cls}" title="Sentiment Score: ${score}" style="font-size:0.8em">${icon}<br/>${score}</span>`;
+        }
+
 
         // Reason (truncated with tooltip)
         let reasonHtml = '<span class="cell-na">-</span>';
         if (d.reason) {
             const fullReason = d.reason.replace(/"/g, '&quot;'); // Escape quotes for HTML attribute
-            const shortReason = d.reason.length > 40 ? d.reason.substring(0, 40) + '...' : d.reason;
-            reasonHtml = `<span title="${fullReason}" style="font-size:0.8em;cursor:help;display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${shortReason}</span>`;
+            const shortReason = d.reason.length > 80 ? d.reason.substring(0, 80) + '...' : d.reason;
+            reasonHtml = `<span title="${fullReason}" style="font-size:0.8em;cursor:help;display:block;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${shortReason}</span>`;
         }
 
         // Position % (exact percentage)
@@ -319,16 +354,7 @@ function renderDecisionTable(history, positions = []) {
                 : '<span class="badge neutral" title="Not aligned">➖</span>';
         }
 
-        // Risk & Guardian
-        let riskHtml = '<span class="cell-na">-</span>';
-        if (d.risk_level) {
-            let cls = 'neutral';
-            if (d.risk_level === 'safe') cls = 'pos';
-            else if (d.risk_level === 'warning') cls = 'warn'; // Assuming css class exists or we use inline
-            else if (d.risk_level === 'danger' || d.risk_level === 'fatal') cls = 'neg';
-            riskHtml = `<span class="val ${cls}">${d.risk_level.toUpperCase()}</span>`;
-        }
-
+        // Guardian
         let guardHtml = '<span class="cell-na">-</span>';
         if (d.guardian_passed !== undefined) {
             if (d.guardian_passed) {
@@ -339,37 +365,87 @@ function renderDecisionTable(history, positions = []) {
             }
         }
 
-        // Render Regime and Position separately
-        let regHtml = '-';
-        let posHtml = '-';
-        if (d.regime && d.position) {
+        // Render Regime with semantic icons
+        let regHtml = '<span class="cell-na">-</span>';
+        if (d.regime && d.regime.regime) {
             let reg = (d.regime.regime || 'unknown').toLowerCase();
-            if (reg === 'trending_up') reg = 'UP';
-            else if (reg === 'trending_down') reg = 'DOWN';
-            else if (reg === 'choppy') reg = 'CHOP';
-            else reg = reg.toUpperCase().substring(0, 4);
+            let icon = '➖';
+            let text = 'UNKNOWN';
+            let cls = 'neutral';
 
-            let pos = (d.position.location || 'unknown').toLowerCase();
-            // Simplify position text
-            if (pos === 'middle') pos = 'MID';
-            else if (pos === 'low') pos = 'LOW';
-            else if (pos === 'high') pos = 'HIGH';
-            else if (pos === 'upper') pos = 'UPPER';
-            else if (pos === 'lower') pos = 'LOWER';
-            else pos = pos.toUpperCase().substring(0, 5);
+            if (reg.includes('up') || reg.includes('bull')) {
+                icon = '📈';
+                text = 'UP';
+                cls = 'pos';
+            } else if (reg.includes('down') || reg.includes('bear')) {
+                icon = '📉';
+                text = 'DOWN';
+                cls = 'neg';
+            } else if (reg.includes('chop') || reg.includes('sideways')) {
+                icon = '〰️';
+                text = 'CHOP';
+                cls = 'neutral';
+            }
 
-            let posPctVal = (d.position.position_pct !== undefined) ? parseFloat(d.position.position_pct).toFixed(1) : '?';
-
-            regHtml = `<span class="badge neutral" title="${d.regime.regime}">${reg}</span>`;
-            posHtml = `<span class="badge neutral" title="Exact: ${posPctVal}%">${pos}</span>`;
+            regHtml = `<span class="val ${cls}" title="${d.regime.regime}" style="font-size:0.8em">${icon}<br/>${text}</span>`;
         }
 
-        // Prophet P(Up) - PredictAgent probability
+        // Render Position with semantic icons
+        let posHtml = '<span class="cell-na">-</span>';
+        if (d.position && d.position.location) {
+            let pos = (d.position.location || 'unknown').toLowerCase();
+            let icon = '➖';
+            let text = 'MID';
+            let cls = 'neutral';
+
+            if (pos.includes('high') || pos.includes('upper')) {
+                icon = '🔝';
+                text = 'HIGH';
+                cls = 'warn';
+            } else if (pos.includes('low') || pos.includes('lower')) {
+                icon = '🔻';
+                text = 'LOW';
+                cls = 'pos';
+            } else {
+                icon = '➖';
+                text = 'MID';
+            }
+
+            let posPctVal = (d.position.position_pct !== undefined) ? parseFloat(d.position.position_pct).toFixed(0) : '?';
+            posHtml = `<span class="val ${cls}" title="Exact: ${posPctVal}%" style="font-size:0.8em">${icon}<br/>${posPctVal}%</span>`;
+        }
+
+        // Prophet P(Up) with icon
         let prophetHtml = '<span class="cell-na">-</span>';
         if (d.prophet_probability !== undefined && d.prophet_probability !== null) {
             const pUp = (d.prophet_probability * 100).toFixed(0);
             const cls = d.prophet_probability > 0.55 ? 'pos' : (d.prophet_probability < 0.45 ? 'neg' : 'neutral');
-            prophetHtml = `<span class="val ${cls}">${pUp}%</span>`;
+            const icon = d.prophet_probability > 0.55 ? '🔮↗' : (d.prophet_probability < 0.45 ? '🔮↘' : '🔮➖');
+            prophetHtml = `<span class="val ${cls}" title="ML Prediction" style="font-size:0.8em">${icon}<br/>${pUp}%</span>`;
+        }
+
+        // Risk with semantic icons
+        let riskHtml = '<span class="cell-na">-</span>';
+        if (d.risk_level) {
+            let icon = '⚠️';
+            let text = d.risk_level.toUpperCase();
+            let cls = 'neutral';
+
+            if (d.risk_level === 'safe') {
+                icon = '✅';
+                text = 'SAFE';
+                cls = 'pos';
+            } else if (d.risk_level === 'warning') {
+                icon = '⚠️';
+                text = 'WARN';
+                cls = 'warn';
+            } else if (d.risk_level === 'danger' || d.risk_level === 'fatal') {
+                icon = '🚨';
+                text = 'DANGER';
+                cls = 'neg';
+            }
+
+            riskHtml = `<span class="val ${cls}" style="font-size:0.8em">${icon}<br/>${text}</span>`;
         }
 
         // 🐂🐻 Bull/Bear Agent Confidence with Semantic Stance
@@ -385,12 +461,12 @@ function renderDecisionTable(history, positions = []) {
 
             // Stance abbreviations
             const stanceAbbr = {
-                'STRONGLY_BULLISH': '🔥强多',
-                'SLIGHTLY_BULLISH': '↗轻多',
-                'STRONGLY_BEARISH': '🔥强空',
-                'SLIGHTLY_BEARISH': '↘轻空',
-                'NEUTRAL': '➖中性',
-                'UNCERTAIN': '❓不定',
+                'STRONGLY_BULLISH': '🔥Bull',
+                'SLIGHTLY_BULLISH': '↗Bull',
+                'STRONGLY_BEARISH': '🔥Bear',
+                'SLIGHTLY_BEARISH': '↘Bear',
+                'NEUTRAL': '➖Neutral',
+                'UNCERTAIN': '❓Unclear',
                 'UNKNOWN': '?'
             };
 
@@ -414,7 +490,7 @@ function renderDecisionTable(history, positions = []) {
                 <td class="${actionClass}">${action}</td>
                 <td>${conf}</td>
                 <td>${reasonHtml}</td>
-                <td>${stratHtml}</td>
+
                 <td>${signal1h}</td>
                 <td>${signal15m}</td>
                 <td>${signal5m}</td>
@@ -448,10 +524,16 @@ function renderAccount(account) {
     // Header equity also if exists
     setTxt('header-equity', fmt(account.total_equity));
 
-    // PnL Styling
+    // PnL Styling with Percentage
     const pnlEl = document.getElementById('acc-pnl');
     if (pnlEl) {
-        pnlEl.textContent = fmt(account.total_pnl);
+        const pnlAmount = fmt(account.total_pnl);
+        const walletBalance = account.wallet_balance || account.total_equity - account.total_pnl;
+        const pnlPercentage = walletBalance > 0 ? ((account.total_pnl / walletBalance) * 100).toFixed(2) : 0;
+        const sign = account.total_pnl > 0 ? '+' : '';
+
+        pnlEl.textContent = `${pnlAmount} (${sign}${pnlPercentage}%)`;
+
         if (account.total_pnl > 0) pnlEl.className = 'val pos';
         else if (account.total_pnl < 0) pnlEl.className = 'val neg';
         else pnlEl.className = 'val neutral';

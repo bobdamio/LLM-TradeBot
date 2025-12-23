@@ -121,7 +121,7 @@ class StrategyEngine:
             return decision
             
         except Exception as e:
-            log.error(f"LLM决策失败: {e}")
+            log.error(f"LLM decision failed: {e}")
             # 返回保守决策
             return self._get_fallback_decision(market_context_data)
     
@@ -422,8 +422,7 @@ Shows where current price sits within its recent trading range (0-100%).
 **Correct**: "Price at 71% in uptrend → strong consolidation → LONG opportunity"
 
 
-### Strategist Score
-Comprehensive score combining all technical signals. Higher scores indicate bullish alignment across indicators, lower scores indicate bearish alignment.
+
 
 ## 🔄 CHOPPY Market Strategy (Range Trading Intelligence)
 
@@ -598,17 +597,19 @@ Now, please output your analysis and decision strictly following the format abov
         if bull_perspective or bear_perspective:
             bull_reasons = bull_perspective.get('bullish_reasons', 'N/A') if bull_perspective else 'N/A'
             bull_conf = bull_perspective.get('bull_confidence', 50) if bull_perspective else 50
+            bull_stance = bull_perspective.get('stance', 'UNKNOWN') if bull_perspective else 'UNKNOWN'
             bear_reasons = bear_perspective.get('bearish_reasons', 'N/A') if bear_perspective else 'N/A'
             bear_conf = bear_perspective.get('bear_confidence', 50) if bear_perspective else 50
+            bear_stance = bear_perspective.get('stance', 'UNKNOWN') if bear_perspective else 'UNKNOWN'
             
             adversarial_section = f"""
 
 ## 🐂🐻 Adversarial Analysis (Consider BOTH perspectives)
 
-### 🐂 Bull Agent (Confidence: {bull_conf}%)
+### 🐂 Bull Agent [{bull_stance}] (Confidence: {bull_conf}%)
 {bull_reasons}
 
-### 🐻 Bear Agent (Confidence: {bear_conf}%)
+### 🐻 Bear Agent [{bear_stance}] (Confidence: {bear_conf}%)
 {bear_reasons}
 
 > **IMPORTANT**: Weigh both perspectives. If one side has significantly higher confidence (>20% difference), lean towards that direction. If similar, prefer `wait`.
@@ -708,7 +709,7 @@ Please start your analysis and output the decision in JSON Array format `[{{...}
             'position_size_pct': 0,
             'stop_loss_pct': 1.0,
             'take_profit_pct': 2.0,
-            'reasoning': 'LLM决策失败，采用保守策略观望',
+            'reasoning': 'LLM decision failed, using conservative fallback strategy',
             'timestamp': context.get('timestamp'),
             'is_fallback': True
         }

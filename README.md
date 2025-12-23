@@ -97,7 +97,14 @@ After startup, visit: **<http://localhost:8000>**
 
 - **📉 Real-time K-Line**: Integrated TradingView widget, 1-minute real-time updates
 - **📈 Net Value Curve**: Real-time equity tracking with initial balance baseline
-- **📋 Decision Audit**: Full history of decision records, including detailed Agent scores (Strategist, Trend, Oscillator, Sentiment)
+- **📋 Recent Decisions**: Full decision history with 17 columns showing multi-agent analysis:
+  - **System**: Time, Cycle, Symbol
+  - **Critic**: Result (LONG/SHORT/WAIT), Confidence, Reason
+  - **Strategist**: 1h/15m/5m signals (Trend + Oscillator), Sentiment score
+  - **Prophet**: ML prediction probability with direction (↗UP/➖NEU/↘DN)
+  - **Bull/Bear**: Adversarial perspectives with stance (🔥Strong/↗Slight) and confidence
+  - **Context**: Market Regime (📈UP/📉DN/〰️CHOP), Price Position (🔝HIGH/➖MID/🔻LOW)
+  - **Guardian**: Risk level (✅SAFE/⚠️WARN/🚨DANGER), Audit result (✅PASS/⛔BLOCK), Multi-period alignment
 - **📜 Trade History**: Complete record of all trades with Open/Close cycles and PnL statistics
 - **📡 Live Log Output**: Real-time scrolling logs with highlighted Agent tags (Oracle, Strategist, Critic, Guardian), 500-line history buffer
 

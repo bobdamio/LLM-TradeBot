@@ -328,6 +328,12 @@ class MultiAgentTradingBot:
             # Save Context
             self.saver.save_context(quant_analysis, self.current_symbol, 'analytics', snapshot_id)
             
+            # LOG 2: QuantAnalyst (The Strategist)
+            trend_score = quant_analysis.get('trend', {}).get('total_trend_score', 0)
+            osc_score = quant_analysis.get('oscillator', {}).get('total_osc_score', 0)
+            sent_score = quant_analysis.get('sentiment', {}).get('total_sentiment_score', 0)
+            global_state.add_log(f"👨‍🔬 QuantAnalystAgent (The Strategist): Trend={trend_score:+.0f} | Osc={osc_score:+.0f} | Sent={sent_score:+.0f}")
+            
             # Step 2.5: Prophet
             print("[Step 2.5/5] 🔮 预测预言家 (The Prophet) - 计算上涨概率...")
             df_15m_features = self.feature_engineer.build_features(processed_dfs['15m'])
@@ -339,6 +345,11 @@ class MultiAgentTradingBot:
             
             predict_result = await self.predict_agents[self.current_symbol].predict(predict_features)
             global_state.prophet_probability = predict_result.probability_up
+            
+            # LOG 3: Prophet (The Prophet)
+            p_up_pct = predict_result.probability_up * 100
+            direction = "↗UP" if predict_result.probability_up > 0.55 else ("↘DN" if predict_result.probability_up < 0.45 else "➖NEU")
+            global_state.add_log(f"🔮 PredictAgent (The Prophet): P(Up)={p_up_pct:.1f}% {direction}")
             
             # Step 3: DeepSeek
             market_data = {
@@ -473,18 +484,18 @@ class MultiAgentTradingBot:
                 snapshot_id=snapshot_id
             )
             
-            # LOG: DeepSeek
-            global_state.add_log(f"🧠 DeepSeek LLM: Action={vote_result.action.upper()} | Conf={llm_decision.get('confidence', 0)}% | {llm_decision.get('reasoning', '')[:50]}")
-            
-            # LOG: Bull/Bear Agents
+            # LOG: Bull/Bear Agents (show first for adversarial context)
             bull_conf = llm_decision.get('bull_perspective', {}).get('bull_confidence', 50)
             bear_conf = llm_decision.get('bear_perspective', {}).get('bear_confidence', 50)
             bull_stance = llm_decision.get('bull_perspective', {}).get('stance', 'UNKNOWN')
             bear_stance = llm_decision.get('bear_perspective', {}).get('stance', 'UNKNOWN')
-            bull_reasons = llm_decision.get('bull_perspective', {}).get('bullish_reasons', '')[:50]
-            bear_reasons = llm_decision.get('bear_perspective', {}).get('bearish_reasons', '')[:50]
+            bull_reasons = llm_decision.get('bull_perspective', {}).get('bullish_reasons', '')[:120]
+            bear_reasons = llm_decision.get('bear_perspective', {}).get('bearish_reasons', '')[:120]
             global_state.add_log(f"🐂 Bull Agent: [{bull_stance}] Conf={bull_conf}% | {bull_reasons}...")
             global_state.add_log(f"🐻 Bear Agent: [{bear_stance}] Conf={bear_conf}% | {bear_reasons}...")
+            
+            # LOG: LLM Decision Engine (generic, not tied to DeepSeek)
+            global_state.add_log(f"🧠 LLM Decision Engine: Action={vote_result.action.upper()} | Conf={llm_decision.get('confidence', 0)}% | {llm_decision.get('reasoning', '')[:50]}")
             
             # ✅ Decision Recording moved after Risk Audit for complete context
             # Saved to file still happens here for "raw" decision
