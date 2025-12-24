@@ -60,7 +60,8 @@ from src.agents import (
     DecisionCoreAgent,
     RiskAuditAgent,
     PositionInfo,
-    SignalWeight
+    SignalWeight,
+    ReflectionAgent
 )
 from src.strategy.deepseek_engine import StrategyEngine
 from src.agents.predict_agent import PredictAgent
@@ -165,6 +166,10 @@ class MultiAgentTradingBot:
         # 🧠 DeepSeek 决策引擎
         self.strategy_engine = StrategyEngine()
         print("  ✅ DeepSeek StrategyEngine 已就绪")
+        
+        # 🧠 Reflection Agent - 交易反思
+        self.reflection_agent = ReflectionAgent()
+        print("  ✅ ReflectionAgent 已就绪")
         
         print(f"\n⚙️  交易配置:")
         print(f"  - 交易对: {', '.join(self.symbols)}")
@@ -445,10 +450,28 @@ class MultiAgentTradingBot:
                 'current_price': current_price
             }
             
-            # Call DeepSeek
+            # 🧠 Check if reflection is needed (every 10 trades)
+            reflection_text = None
+            total_trades = len(global_state.trade_history)
+            if self.reflection_agent.should_reflect(total_trades):
+                log.info(f"🧠 Triggering reflection after {total_trades} trades...")
+                trades_to_analyze = global_state.trade_history[-10:]
+                reflection_result = await self.reflection_agent.generate_reflection(trades_to_analyze)
+                if reflection_result:
+                    reflection_text = reflection_result.to_prompt_text()
+                    global_state.last_reflection = reflection_result.raw_response
+                    global_state.last_reflection_text = reflection_text
+                    global_state.reflection_count = self.reflection_agent.reflection_count
+                    global_state.add_log(f"🧠 Reflection #{self.reflection_agent.reflection_count} generated")
+            else:
+                # Use cached reflection if available
+                reflection_text = global_state.last_reflection_text
+            
+            # Call DeepSeek with optional reflection
             llm_decision = self.strategy_engine.make_decision(
                 market_context_text=market_context_text,
-                market_context_data=market_context_data
+                market_context_data=market_context_data,
+                reflection=reflection_text
             )
             
             # ... Rest of logic stays similar ...

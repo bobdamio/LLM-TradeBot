@@ -60,13 +60,14 @@ class StrategyEngine:
         
         log.info(f"🤖 策略引擎初始化完成 (Provider: {provider}, Model: {self.model})")
     
-    def make_decision(self, market_context_text: str, market_context_data: Dict) -> Dict:
+    def make_decision(self, market_context_text: str, market_context_data: Dict, reflection: str = None) -> Dict:
         """
         基于市场上下文做出交易决策
         
         Args:
             market_context_text: 格式化的市场上下文文本
             market_context_data: 原始市场数据
+            reflection: 可选的交易反思文本（来自 ReflectionAgent）
             
         Returns:
             决策结果字典
@@ -78,7 +79,7 @@ class StrategyEngine:
         bear_perspective = self.get_bear_perspective(market_context_text)
         
         system_prompt = self._build_system_prompt()
-        user_prompt = self._build_user_prompt(market_context_text, bull_perspective, bear_perspective)
+        user_prompt = self._build_user_prompt(market_context_text, bull_perspective, bear_perspective, reflection)
         
         # 记录 LLM 输入
         log.llm_input(f"正在发送市场数据到 {self.provider}...", market_context_text)
@@ -284,8 +285,8 @@ Focus ONLY on bearish factors. Ignore bullish signals."""
             log.error("Failed to import DEFAULT_SYSTEM_PROMPT")
             return "Error: Default prompt missing"
     
-    def _build_user_prompt(self, market_context: str, bull_perspective: Dict = None, bear_perspective: Dict = None) -> str:
-        """Build User Prompt (English Version) with Bull/Bear perspectives"""
+    def _build_user_prompt(self, market_context: str, bull_perspective: Dict = None, bear_perspective: Dict = None, reflection: str = None) -> str:
+        """Build User Prompt (English Version) with Bull/Bear perspectives and optional reflection"""
         
         # Build adversarial analysis section
         adversarial_section = ""
@@ -312,12 +313,25 @@ Focus ONLY on bearish factors. Ignore bullish signals."""
 ---
 """
         
+        # Build reflection section (from ReflectionAgent)
+        reflection_section = ""
+        if reflection:
+            reflection_section = f"""
+## 🧠 Trading Reflection (Lessons from Last 10 Trades)
+
+{reflection}
+
+> **Apply these insights**: Consider the patterns and recommendations when making your decision.
+
+---
+"""
+        
         return f"""# 📊 Real-Time Market Data (Technical Analysis Completed)
 
 The system has prepared the following complete market status for **5m/15m/1h** timeframes:
 
 {market_context}
-{adversarial_section}
+{adversarial_section}{reflection_section}
 ---
 
 ## 🎯 Your Task

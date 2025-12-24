@@ -16,7 +16,7 @@ Intelligent Multi-Agent Quantitative Trading Bot based on the **Adversarial Deci
 ## ✨ Key Features
 
 - 🕵️ **Perception First**: Unlike strict indicator-based systems, this framework prioritizes judging "IF we should trade" before deciding "HOW to trade".
-- 🤖 **Multi-Agent Collaboration**: 8 highly specialized Agents operating independently to form an adversarial verification chain.
+- 🤖 **Multi-Agent Collaboration**: 9 highly specialized Agents operating independently to form an adversarial verification chain.
 - 🧠 **Multi-LLM Support**: Seamlessly switch between DeepSeek, OpenAI, Claude, Qwen, and Gemini via Dashboard settings.
 - 📊 **Multi-Account Trading**: Manage multiple exchange accounts with unified API abstraction (currently Binance, extensible).
 - ⚡ **Async Concurrency**: Currently fetches multi-timeframe data (5m/15m/1h) concurrently, ensuring data alignment at the snapshot moment.
@@ -329,7 +329,17 @@ LLM-TradeBot/
     - **Role**: Risk Controller.
     - **Action**: Physically independent audit layer. Checks Max Drawdown protection, R/R requirements, and exposure limits. Has **Veto Power** to block high-risk trades regardless of high confidence.
 
-8. **🚀 ExecutionEngine**
+8. **🧠 ReflectionAgent (The Philosopher)** 🆕
+    - **Role**: Trading Retrospection Analyst.
+    - **Trigger**: Automatically runs after every **10 completed trades**.
+    - **Action**:
+        - Analyzes recent trade history for patterns (winning/losing conditions).
+        - Identifies confidence calibration issues (over/under-confident decisions).
+        - Generates actionable recommendations for improvement.
+    - **Integration**: Reflection insights are injected into the Decision Agent's prompt to influence future decisions.
+    - **Output**: Structured analysis with patterns, recommendations, and market insights.
+
+9. **🚀 ExecutionEngine**
     - **Role**: Sniper.
     - **Action**: Precision execution within the closing seconds of the candle, handling order lifecycle and state updates.
 
@@ -347,10 +357,11 @@ LLM-TradeBot/
 2. **Quant Analysis Layer** (Green): QuantAnalystAgent with 3 parallel Sub-Agents
 3. **Prediction Layer** (Magenta): PredictAgent with LightGBM ML model
 4. **Bull/Bear Adversarial Layer** (Yellow): 🐂 Bull Agent + 🐻 Bear Agent provide opposing perspectives
-5. **Decision Adversarial Layer** (Orange): DecisionCoreAgent with regime-aware weighted voting + Bull/Bear input
-6. **Risk Audit Layer** (Red): RiskAuditAgent final check and auto-correction
-7. **Execution Layer** (Purple): ExecutionEngine order execution
-8. **Visualization Layer**: Recent Decisions table showing full Agent data (18 columns including Bull/Bear)
+5. **Reflection Layer** (Cyan): 🧠 ReflectionAgent analyzes trade history every 10 trades 🆕
+6. **Decision Adversarial Layer** (Orange): DecisionCoreAgent with regime-aware weighted voting + Bull/Bear + Reflection input
+7. **Risk Audit Layer** (Red): RiskAuditAgent final check and auto-correction
+8. **Execution Layer** (Purple): ExecutionEngine order execution
+9. **Visualization Layer**: Recent Decisions table showing full Agent data
 
 #### Detailed Flowchart
 
@@ -381,20 +392,26 @@ graph TB
         BEAR --> BRP[Bear Perspective<br/>Stance, Reasons]
     end
     
-    subgraph "5️⃣ Decision Adversarial Layer"
-        QR & PR & BP & BRP --> DC[⚖️ DecisionCoreAgent<br/>Weighted Voting]
+    subgraph "5️⃣ Reflection Layer"
+        TH[Trade History<br/>Last 10 Trades] --> REF[🧠 ReflectionAgent<br/>The Philosopher]
+        REF --> RI[Reflection Insights<br/>Patterns, Recommendations]
+    end
+    
+    subgraph "6️⃣ Decision Adversarial Layer"
+        QR & PR & BP & BRP & RI --> DC[⚖️ DecisionCoreAgent<br/>Weighted Voting]
         DC --> RD[RegimeDetector]
         DC --> POS[PositionAnalyzer]
         RD & POS --> VR[VoteResult<br/>Action, Conf]
     end
     
-    subgraph "6️⃣ Risk Audit Layer"
+    subgraph "7️⃣ Risk Audit Layer"
         VR --> RA[🛡️ RiskAuditAgent<br/>Veto Power]
         RA --> AR[AuditResult<br/>Risk, Guard]
     end
     
-    subgraph "7️⃣ Execution Layer"
+    subgraph "8️⃣ Execution Layer"
         AR --> EE[🚀 ExecutionEngine]
+        EE -.-> TH
     end
     
     style A fill:#4A90E2,color:#fff
@@ -402,6 +419,7 @@ graph TB
     style PA fill:#BD10E0,color:#fff
     style BULL fill:#F8E71C,color:#333
     style BEAR fill:#F8E71C,color:#333
+    style REF fill:#00CED1,color:#fff
     style DC fill:#F5A623,color:#fff
     style RA fill:#D0021B,color:#fff
     style EE fill:#9013FE,color:#fff
@@ -493,6 +511,12 @@ data/
 ---
 
 ## 🎉 Latest Updates
+
+**2025-12-25**:
+
+- ✅ **ReflectionAgent (The Philosopher)**: New agent that analyzes every 10 trades and provides insights to improve future decisions.
+- ✅ **Trading Retrospection**: Automatic pattern detection, confidence calibration, and actionable recommendations.
+- ✅ **Decision Integration**: Reflection insights are injected into Decision Agent prompts for continuous learning.
 
 **2025-12-24**:
 

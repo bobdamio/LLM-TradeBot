@@ -9,6 +9,7 @@ from .quant_analyst_agent import QuantAnalystAgent
 from .decision_core_agent import DecisionCoreAgent, VoteResult, SignalWeight
 from .risk_audit_agent import RiskAuditAgent, RiskCheckResult, PositionInfo, RiskLevel
 from .predict_agent import PredictAgent, PredictResult
+from .reflection_agent import ReflectionAgent, ReflectionResult
 
 __all__ = [
     'DataSyncAgent',
@@ -23,5 +24,8 @@ __all__ = [
     'RiskLevel',
     'PredictAgent',
     'PredictResult',
+    'ReflectionAgent',
+    'ReflectionResult',
 ]
+
 

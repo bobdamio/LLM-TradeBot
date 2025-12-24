@@ -62,6 +62,11 @@ class SharedState:
     trade_history: List[Dict] = field(default_factory=list)
     recent_logs: List[str] = field(default_factory=list)
     
+    # Reflection Agent State
+    reflection_count: int = 0
+    last_reflection: Optional[Dict] = None
+    last_reflection_text: Optional[str] = None
+    
     def update_market(self, price: float, regime: str, position: str):
         self.current_price = price
         self.market_regime = regime
