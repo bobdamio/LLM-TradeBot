@@ -165,7 +165,10 @@ class MultiAgentTradingBot:
         
         # 🧠 DeepSeek 决策引擎
         self.strategy_engine = StrategyEngine()
-        print("  ✅ DeepSeek StrategyEngine 已就绪")
+        if self.strategy_engine.is_ready:
+            print("  ✅ DeepSeek StrategyEngine 已就绪")
+        else:
+            print("  ⚠️ DeepSeek StrategyEngine 未就绪 (等待 API Key 配置)")
         
         # 🧠 Reflection Agent - 交易反思
         self.reflection_agent = ReflectionAgent()
@@ -1543,11 +1546,17 @@ class MultiAgentTradingBot:
         try:
             while global_state.is_running:
                 # Check stop state FIRST - must break before continue
+                # Check stop state FIRST - must break before continue
                 if global_state.execution_mode == 'Stopped':
-                    print("\n⏹️ 系统已停止")
-                    global_state.add_log("⏹️ System STOPPED by user")
-                    global_state.is_running = False  # Also set is_running to False
-                    break
+                    # Fix: Do not break, just wait.
+                    if not hasattr(self, '_stop_logged') or not self._stop_logged:
+                        print("\n⏹️ 系统已停止 (等待启动)")
+                        global_state.add_log("⏹️ System STOPPED - Waiting for Start...")
+                        self._stop_logged = True
+                    time.sleep(1)
+                    continue
+                else:
+                    self._stop_logged = False
                 
                 # Check pause state - continue waiting
                 if global_state.execution_mode == 'Paused':

@@ -1,8 +1,10 @@
-from fastapi import FastAPI, Body, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Body, HTTPException, Request, Response, Depends, Cookie
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import secrets
+from typing import Optional
 
 from src.server.state import global_state
 
@@ -11,6 +13,9 @@ from pydantic import BaseModel
 class ControlCommand(BaseModel):
     action: str  # start, pause, stop, restart, set_interval
     interval: float = None  # Optional: interval in minutes for set_interval action
+
+class LoginRequest(BaseModel):
+    password: str
 
 from fastapi import UploadFile, File
 import shutil
@@ -30,6 +35,19 @@ app.add_middleware(
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 WEB_DIR = os.path.join(BASE_DIR, 'web')
 
+# Authentication Configuration
+WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "admin")  # Default password
+SESSION_COOKIE_NAME = "tradebot_session"
+# Simple in-memory session store (In production use Redis or signed cookies)
+VALID_SESSIONS = set()
+
+def verify_auth(request: Request):
+    """Dependency to verify session authentication"""
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if not session_id or session_id not in VALID_SESSIONS:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return True
+
 import math
 
 def clean_nans(obj):
@@ -43,9 +61,39 @@ def clean_nans(obj):
         return [clean_nans(i) for i in obj]
     return obj
 
+# Authentication Endpoints
+@app.post("/api/login")
+async def login(response: Response, data: LoginRequest):
+    if data.password == WEB_PASSWORD:
+        session_id = secrets.token_urlsafe(32)
+        VALID_SESSIONS.add(session_id)
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME, 
+            value=session_id, 
+            httponly=True, 
+            max_age=86400 * 7, # 7 days
+            samesite="lax"
+        )
+        return {"status": "success"}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid password")
+
+@app.post("/api/logout")
+async def logout(response: Response):
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return {"status": "success"}
+
+@app.get("/api/auth/status")
+async def check_auth_status(request: Request):
+    try:
+        verify_auth(request)
+        return {"status": "authenticated"}
+    except HTTPException:
+        return {"status": "unauthenticated"}
+
 # API Endpoints
 @app.get("/api/status")
-async def get_status():
+async def get_status(authenticated: bool = Depends(verify_auth)):
     data = {
         "system": {
             "running": global_state.is_running,
@@ -90,7 +138,7 @@ async def get_status():
     return clean_nans(data)
 
 @app.post("/api/control")
-async def control_bot(cmd: ControlCommand):
+async def control_bot(cmd: ControlCommand, authenticated: bool = Depends(verify_auth)):
     action = cmd.action.lower()
     if action == "start":
         global_state.execution_mode = "Running"
@@ -115,7 +163,7 @@ async def control_bot(cmd: ControlCommand):
     return {"status": "success", "mode": global_state.execution_mode}
 
 @app.post("/api/upload_prompt")
-async def upload_prompt(file: UploadFile = File(...)):
+async def upload_prompt(file: UploadFile = File(...), authenticated: bool = Depends(verify_auth)):
     try:
         # Determine config directory
         config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config')
@@ -137,17 +185,17 @@ from src.server.config_manager import ConfigManager
 config_manager = ConfigManager(BASE_DIR)
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(authenticated: bool = Depends(verify_auth)):
     """Get current configuration (masked)"""
     return config_manager.get_config()
 
 @app.get("/api/config/prompt")
-async def get_prompt_content():
+async def get_prompt_content(authenticated: bool = Depends(verify_auth)):
     """Get content of custom prompt file"""
     return {"content": config_manager.get_prompt()}
 
 @app.post("/api/config")
-async def update_config_endpoint(data: dict = Body(...)):
+async def update_config_endpoint(data: dict = Body(...), authenticated: bool = Depends(verify_auth)):
     """Update .env configuration"""
     success = config_manager.update_config(data)
     if success:
@@ -156,7 +204,7 @@ async def update_config_endpoint(data: dict = Body(...)):
         raise HTTPException(status_code=500, detail="Failed to update configuration")
 
 @app.post("/api/config/prompt")
-async def update_prompt_text(data: dict = Body(...)):
+async def update_prompt_text(data: dict = Body(...), authenticated: bool = Depends(verify_auth)):
     """Update custom prompt via text editor"""
     content = data.get("content", "")
     success = config_manager.update_prompt(content)
@@ -166,7 +214,7 @@ async def update_prompt_text(data: dict = Body(...)):
         raise HTTPException(status_code=500, detail="Failed to save prompt")
 
 @app.get("/api/config/default_prompt")
-async def get_default_prompt():
+async def get_default_prompt(authenticated: bool = Depends(verify_auth)):
     """Get the system default prompt template"""
     try:
         from src.config.default_prompt_template import DEFAULT_SYSTEM_PROMPT
@@ -195,7 +243,7 @@ def get_account_manager():
     return _account_manager
 
 @app.get("/api/accounts")
-async def list_accounts():
+async def list_accounts(authenticated: bool = Depends(verify_auth)):
     """List all configured trading accounts"""
     manager = get_account_manager()
     accounts = manager.list_accounts()
@@ -205,7 +253,7 @@ async def list_accounts():
     }
 
 @app.get("/api/accounts/{account_id}")
-async def get_account(account_id: str):
+async def get_account(account_id: str, authenticated: bool = Depends(verify_auth)):
     """Get details of a specific account"""
     manager = get_account_manager()
     account = manager.get_account(account_id)
@@ -221,7 +269,7 @@ class AccountCreate(BaseModel):
     testnet: bool = True
 
 @app.post("/api/accounts")
-async def create_account(data: AccountCreate):
+async def create_account(data: AccountCreate, authenticated: bool = Depends(verify_auth)):
     """Create a new trading account"""
     manager = get_account_manager()
     
@@ -258,7 +306,7 @@ async def create_account(data: AccountCreate):
     return {"status": "success", "account": account.to_dict()}
 
 @app.delete("/api/accounts/{account_id}")
-async def delete_account(account_id: str):
+async def delete_account(account_id: str, authenticated: bool = Depends(verify_auth)):
     """Delete a trading account"""
     manager = get_account_manager()
     
@@ -277,7 +325,7 @@ async def delete_account(account_id: str):
         raise HTTPException(status_code=500, detail="Failed to remove account")
 
 @app.get("/api/exchanges")
-async def list_exchanges():
+async def list_exchanges(authenticated: bool = Depends(verify_auth)):
     """List supported exchanges"""
     from src.exchanges import get_supported_exchanges
     return {"exchanges": get_supported_exchanges()}
@@ -285,7 +333,16 @@ async def list_exchanges():
 # Serve Static Files
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
-# Root Route -> Index
+# Root Route -> Checks login
 @app.get("/")
-async def read_root():
-    return FileResponse(os.path.join(WEB_DIR, 'index.html'))
+async def read_root(request: Request):
+    # Check if authenticated
+    try:
+        verify_auth(request)
+        return FileResponse(os.path.join(WEB_DIR, 'index.html'))
+    except HTTPException:
+        return RedirectResponse("/login")
+
+@app.get("/login")
+async def read_login():
+    return FileResponse(os.path.join(WEB_DIR, 'login.html'))

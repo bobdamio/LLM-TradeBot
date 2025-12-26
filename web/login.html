@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - LLM-TradeBot</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f1115;
+            --card-bg: rgba(23, 15, 30, 0.6);
+            --primary: #00ff9d;
+            --danger: #ff4757;
+            --text-main: #e2e8f0;
+            --text-dim: #94a3b8;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(0, 255, 157, 0.08), transparent 25%), 
+                radial-gradient(circle at 85% 30%, rgba(66, 153, 225, 0.08), transparent 25%);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 400px;
+            padding: 40px;
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo {
+            font-size: 48px;
+            margin-bottom: 20px;
+            display: inline-block;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0 0 8px 0;
+            background: linear-gradient(135deg, #fff 0%, #a0aec0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            margin: 0 0 30px 0;
+            color: var(--text-dim);
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 12px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type="password"] {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.2s;
+            box-sizing: border-box;
+        }
+
+        input[type="password"]:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(0, 255, 157, 0.2);
+        }
+
+        button.btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #00ff9d 0%, #00cc7a 100%);
+            border: none;
+            border-radius: 8px;
+            color: #000;
+            font-weight: 700;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.1s, filter 0.2s;
+        }
+
+        button.btn-login:hover {
+            filter: brightness(1.1);
+        }
+
+        button.btn-login:active {
+            transform: scale(0.98);
+        }
+
+        button.btn-login:disabled {
+            background: #2d3748;
+            color: #718096;
+            cursor: not-allowed;
+            filter: none;
+        }
+
+        .error-msg {
+            margin-top: 15px;
+            color: var(--danger);
+            font-size: 13px;
+            min-height: 20px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .footer {
+            margin-top: 30px;
+            font-size: 12px;
+            color: #4a5568;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="logo">🔐</div>
+        <h1>Access Control</h1>
+        <p class="subtitle">LLM-TradeBot Dashboard</p>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="Enter access code..." required autofocus>
+            </div>
+            <button type="submit" id="btn-submit" class="btn-login">Unlock Dashboard</button>
+        </form>
+
+        <div id="error-msg" class="error-msg">Invalid password</div>
+        
+        <div class="footer">
+            &copy; 2025 LLM-TradeBot System
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('login-form');
+        const input = document.getElementById('password');
+        const btn = document.getElementById('btn-submit');
+        const errorEl = document.getElementById('error-msg');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const password = input.value;
+            
+            if (!password) return;
+
+            // UI Loading State
+            btn.disabled = true;
+            btn.textContent = 'Verifying...';
+            errorEl.style.opacity = '0';
+            input.disabled = true;
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+
+                const data = await res.json();
+
+                if (res.ok && data.status === 'success') {
+                    // Success animation
+                    btn.textContent = 'Success!';
+                    btn.style.background = '#00ff9d';
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 500);
+                } else {
+                    throw new Error(data.detail || 'Access denied');
+                }
+            } catch (err) {
+                // Error State
+                errorEl.textContent = err.message || 'Invalid password';
+                errorEl.style.opacity = '1';
+                
+                // Shake animation
+                const container = document.querySelector('.login-container');
+                container.style.transform = 'translateX(5px)';
+                setTimeout(() => container.style.transform = 'translateX(-5px)', 50);
+                setTimeout(() => container.style.transform = 'translateX(5px)', 100);
+                setTimeout(() => container.style.transform = 'translateX(0)', 150);
+                
+                // Reset
+                btn.disabled = false;
+                btn.textContent = 'Unlock Dashboard';
+                input.disabled = false;
+                input.value = '';
+                input.focus();
+            }
+        });
+    </script>
+</body>
+
+</html>

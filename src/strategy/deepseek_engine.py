@@ -29,16 +29,28 @@ class StrategyEngine:
         if not api_key and provider == 'deepseek':
             api_key = config.deepseek.get('api_key')
         
-        if not api_key:
-            raise ValueError(f"No API key found for provider: {provider}")
-        
         # LLM 参数
         self.provider = provider
         self.model = llm_config.get('model') or config.deepseek.get('model', 'deepseek-chat')
         self.temperature = llm_config.get('temperature', config.deepseek.get('temperature', 0.3))
         self.max_tokens = llm_config.get('max_tokens', config.deepseek.get('max_tokens', 2000))
         
-        # 创建 LLM 客户端
+        # 初始化解析器和验证器
+        self.parser = LLMOutputParser()
+        self.validator = DecisionValidator({
+            'max_leverage': config.risk.get('max_leverage', 5),
+            'max_position_pct': config.risk.get('max_total_position_pct', 30.0),
+            'min_risk_reward_ratio': 2.0
+        })
+
+        self.client = None
+        self.is_ready = False
+        
+        if api_key:
+            self._init_client(api_key, llm_config)
+            
+    def _init_client(self, api_key: str, llm_config: Dict):
+        """Initialize LLM Client"""
         llm_cfg = LLMConfig(
             api_key=api_key,
             base_url=llm_config.get('base_url'),
@@ -48,17 +60,27 @@ class StrategyEngine:
             temperature=self.temperature,
             max_tokens=self.max_tokens
         )
-        self.client = create_client(provider, llm_cfg)
+        try:
+            self.client = create_client(self.provider, llm_cfg)
+            self.is_ready = True
+            log.info(f"🤖 策略引擎初始化完成 (Provider: {self.provider}, Model: {self.model})")
+        except Exception as e:
+            log.error(f"Failed to create LLM client: {e}")
+            self.is_ready = False
+    
+    def reload_config(self):
+        """Reload configuration from global config"""
+        # Re-fetch config
+        llm_config = config.llm
+        provider = llm_config.get('provider', 'deepseek')
+        api_keys = llm_config.get('api_keys', {})
+        api_key = api_keys.get(provider) or config.deepseek.get('api_key')
         
-        # 初始化解析器和验证器
-        self.parser = LLMOutputParser()
-        self.validator = DecisionValidator({
-            'max_leverage': config.risk.get('max_leverage', 5),
-            'max_position_pct': config.risk.get('max_total_position_pct', 30.0),
-            'min_risk_reward_ratio': 2.0
-        })
-        
-        log.info(f"🤖 策略引擎初始化完成 (Provider: {provider}, Model: {self.model})")
+        if api_key:
+            self.provider = provider
+            self._init_client(api_key, llm_config)
+            return True
+        return False
     
     def make_decision(self, market_context_text: str, market_context_data: Dict, reflection: str = None) -> Dict:
         """
@@ -72,6 +94,11 @@ class StrategyEngine:
         Returns:
             决策结果字典
         """
+        # Ensure client is initialized
+        if not self.is_ready:
+            if not self.reload_config():
+                log.warning("🚫 LLM Strategy Engine not ready (No API Key). Returning fallback.")
+                return self._get_fallback_decision(market_context_data)
         
         # 🐂🐻 Get adversarial perspectives first
         log.info("🐂🐻 Gathering Bull/Bear perspectives...")
@@ -157,6 +184,9 @@ class StrategyEngine:
         Returns:
             Dict with bullish_reasons and bull_confidence
         """
+        if not self.is_ready or not self.client:
+             return {"bullish_reasons": "LLM not ready", "bull_confidence": 50}
+
         bull_prompt = """You are a BULLISH market analyst. Your job is to find reasons WHY the market could go UP.
 
 Analyze the provided market data and identify:
@@ -212,6 +242,9 @@ Focus ONLY on bullish factors. Ignore bearish signals."""
         Returns:
             Dict with bearish_reasons and bear_confidence
         """
+        if not self.is_ready or not self.client:
+             return {"bearish_reasons": "LLM not ready", "bear_confidence": 50}
+
         bear_prompt = """You are a BEARISH market analyst. Your job is to find reasons WHY the market could go DOWN.
 
 Analyze the provided market data and identify:

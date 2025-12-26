@@ -60,9 +60,25 @@ function initChart() {
 let allDecisionHistory = [];
 let currentActivePositions = []; // To share with table renderer
 
+// Logout Function
+window.logout = function() {
+    if(confirm('Are you sure you want to logout?')) {
+        fetch('/api/logout', { method: 'POST' })
+            .then(() => window.location.href = '/login')
+            .catch(err => console.error(err));
+    }
+};
+
 function updateDashboard() {
     fetch(API_URL)
-        .then(response => response.json())
+        .then(response => {
+            if (response.status === 401 || response.status === 403) {
+                // Session expired or unauthorized
+                window.location.href = '/login';
+                throw new Error("Unauthorized");
+            }
+            return response.json();
+        })
         .then(data => {
             renderSystemStatus(data.system);
             renderMarketData(data.market);
@@ -136,7 +152,10 @@ function updateDashboard() {
                 showAccountAlert(data.account_alert.failure_count);
             }
         })
-        .catch(err => console.error('Error fetching data:', err));
+        .catch(err => {
+            console.error('Error fetching data:', err);
+            // Optional: Show offline status in UI?
+        });
 }
 
 // 决策表过滤函数
