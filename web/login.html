@@ -203,7 +203,8 @@
             e.preventDefault();
             const password = input.value;
 
-            if (!password) return;
+            // Allow empty password for User Role (Railway Mode)
+            // if (!password) return;
 
             // UI Loading State
             btn.disabled = true;
@@ -221,6 +222,11 @@
                 const data = await res.json();
 
                 if (res.ok && data.status === 'success') {
+                    // Store role
+                    if (data.role) {
+                        localStorage.setItem('user_role', data.role);
+                    }
+
                     // Success animation
                     btn.textContent = 'Success!';
                     btn.style.background = '#00ff9d';

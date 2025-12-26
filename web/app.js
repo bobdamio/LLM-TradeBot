@@ -60,8 +60,20 @@ function initChart() {
 let allDecisionHistory = [];
 let currentActivePositions = []; // To share with table renderer
 
+// Helper to verify role permission
+function verifyRole() {
+    const role = localStorage.getItem('user_role');
+    if (role === 'user') {
+        alert("User mode: No permission to perform this action.");
+        return false;
+    }
+    return true;
+}
+
 // Logout Function
 window.logout = function () {
+    if (!verifyRole()) return;
+
     if (confirm('Are you sure you want to logout?')) {
         fetch('/api/logout', { method: 'POST' })
             .then(() => window.location.href = '/login')
@@ -883,6 +895,8 @@ setInterval(updateDashboard, 2000); // Poll every 2s
 updateDashboard();
 
 function setControl(action, payload = {}) {
+    if (!verifyRole()) return;
+
     // For 'start' action, check demo mode and show warning if needed
     if (action === 'start') {
         // Fetch current config to check if using default API
@@ -1549,6 +1563,8 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+    if (!verifyRole()) return;
+
     // Debug Point 1
     // alert('Starting saveSettings()...'); 
 

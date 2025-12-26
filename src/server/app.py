@@ -36,16 +36,24 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 WEB_DIR = os.path.join(BASE_DIR, 'web')
 
 # Authentication Configuration
-WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "admin")  # Default password
+WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "EthanAlgoX")  # Admin password
+DEPLOYMENT_MODE = os.environ.get("DEPLOYMENT_MODE", "local")
+
 SESSION_COOKIE_NAME = "tradebot_session"
-# Simple in-memory session store (In production use Redis or signed cookies)
-VALID_SESSIONS = set()
+# Session store: {session_id: role} where role is 'admin' or 'user'
+VALID_SESSIONS = {}
 
 def verify_auth(request: Request):
-    """Dependency to verify session authentication"""
+    """Dependency to verify login and return role"""
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_id or session_id not in VALID_SESSIONS:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    return VALID_SESSIONS[session_id]  # Return 'admin' or 'user'
+
+def verify_admin(role: str = Depends(verify_auth)):
+    """Dependency to enforce Admin access"""
+    if role != 'admin':
+        raise HTTPException(status_code=403, detail="User mode: No permission to perform this action.")
     return True
 
 import math
@@ -64,9 +72,23 @@ def clean_nans(obj):
 # Authentication Endpoints
 @app.post("/api/login")
 async def login(response: Response, data: LoginRequest):
-    if data.password == WEB_PASSWORD:
+    role = None
+    
+    # Logic for Railway Mode (Dual Role)
+    if DEPLOYMENT_MODE == 'railway':
+        if data.password == WEB_PASSWORD:  # Admin Password
+            role = 'admin'
+        elif not data.password:  # Empty Password -> User
+            role = 'user'
+    else:
+        # Local Mode: Default Admin
+        # If password matches OR password is default 'admin'
+        if data.password == WEB_PASSWORD or data.password == "admin":
+            role = 'admin'
+
+    if role:
         session_id = secrets.token_urlsafe(32)
-        VALID_SESSIONS.add(session_id)
+        VALID_SESSIONS[session_id] = role
         response.set_cookie(
             key=SESSION_COOKIE_NAME, 
             value=session_id, 
@@ -74,12 +96,15 @@ async def login(response: Response, data: LoginRequest):
             max_age=86400 * 7, # 7 days
             samesite="lax"
         )
-        return {"status": "success"}
+        return {"status": "success", "role": role}
     else:
         raise HTTPException(status_code=401, detail="Invalid password")
 
 @app.post("/api/logout")
-async def logout(response: Response):
+async def logout(response: Response, request: Request):
+    session_id = request.cookies.get(SESSION_COOKIE_NAME)
+    if session_id in VALID_SESSIONS:
+        del VALID_SESSIONS[session_id]
     response.delete_cookie(SESSION_COOKIE_NAME)
     return {"status": "success"}
 
@@ -159,7 +184,7 @@ async def get_status(authenticated: bool = Depends(verify_auth)):
     return clean_nans(data)
 
 @app.post("/api/control")
-async def control_bot(cmd: ControlCommand, authenticated: bool = Depends(verify_auth)):
+async def control_bot(cmd: ControlCommand, authenticated: bool = Depends(verify_admin)):
     import time
     action = cmd.action.lower()
     
@@ -225,7 +250,7 @@ async def control_bot(cmd: ControlCommand, authenticated: bool = Depends(verify_
     }
 
 @app.post("/api/upload_prompt")
-async def upload_prompt(file: UploadFile = File(...), authenticated: bool = Depends(verify_auth)):
+async def upload_prompt(file: UploadFile = File(...), authenticated: bool = Depends(verify_admin)):
     try:
         # Determine config directory
         config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config')
@@ -257,7 +282,7 @@ async def get_prompt_content(authenticated: bool = Depends(verify_auth)):
     return {"content": config_manager.get_prompt()}
 
 @app.post("/api/config")
-async def update_config_endpoint(data: dict = Body(...), authenticated: bool = Depends(verify_auth)):
+async def update_config_endpoint(data: dict = Body(...), authenticated: bool = Depends(verify_admin)):
     """Update .env configuration"""
     success = config_manager.update_config(data)
     if success:
@@ -266,7 +291,7 @@ async def update_config_endpoint(data: dict = Body(...), authenticated: bool = D
         raise HTTPException(status_code=500, detail="Failed to update configuration")
 
 @app.post("/api/config/prompt")
-async def update_prompt_text(data: dict = Body(...), authenticated: bool = Depends(verify_auth)):
+async def update_prompt_text(data: dict = Body(...), authenticated: bool = Depends(verify_admin)):
     """Update custom prompt via text editor"""
     content = data.get("content", "")
     success = config_manager.update_prompt(content)
