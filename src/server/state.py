@@ -51,6 +51,12 @@ class SharedState:
     account_last_success_time: Optional[float] = None  # Timestamp of last successful fetch
     account_alert_active: bool = False  # Whether alert is currently shown
     
+    # Demo Mode Tracking (20-minute limit for default API)
+    demo_mode_active: bool = False  # True if using default API key
+    demo_start_time: Optional[float] = None  # Unix timestamp when demo started
+    demo_expired: bool = False  # True if 20 minutes exceeded
+    demo_limit_seconds: int = 20 * 60  # 20 minutes in seconds
+    
     # Chart Data
     equity_history: List[Dict] = field(default_factory=list)  # [{'time': '12:00', 'value': 1000}, ...]
     

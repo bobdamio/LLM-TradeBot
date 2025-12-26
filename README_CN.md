@@ -16,6 +16,7 @@
 
 **无需部署，直接通过网页端监控和管理您的机器人：**
 **[👉 立即访问在线仪表盘](https://web-production-169bb.up.railway.app/)**
+> **默认密码**: `EthanAlgoX`
 
 ---
 

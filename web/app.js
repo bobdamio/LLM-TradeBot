@@ -61,8 +61,8 @@ let allDecisionHistory = [];
 let currentActivePositions = []; // To share with table renderer
 
 // Logout Function
-window.logout = function() {
-    if(confirm('Are you sure you want to logout?')) {
+window.logout = function () {
+    if (confirm('Are you sure you want to logout?')) {
         fetch('/api/logout', { method: 'POST' })
             .then(() => window.location.href = '/login')
             .catch(err => console.error(err));
@@ -150,6 +150,11 @@ function updateDashboard() {
             // Check for account fetch failure alert
             if (data.account_alert && data.account_alert.active) {
                 showAccountAlert(data.account_alert.failure_count);
+            }
+
+            // Handle Demo Mode Timer and Expiration
+            if (data.demo) {
+                handleDemoMode(data.demo);
             }
         })
         .catch(err => {
@@ -877,6 +882,43 @@ setInterval(updateDashboard, 2000); // Poll every 2s
 updateDashboard();
 
 function setControl(action, payload = {}) {
+    // For 'start' action, check demo mode and show warning if needed
+    if (action === 'start') {
+        // Fetch current config to check if using default API
+        fetch('/api/config')
+            .then(res => res.json())
+            .then(config => {
+                const deepseekKey = config.api_keys?.deepseek_api_key || '';
+                const openaiKey = config.api_keys?.openai_api_key || '';
+                const claudeKey = config.api_keys?.claude_api_key || '';
+
+                // Check if all keys are masked (****) or empty - indicates using default
+                const isDefaultApi = (!deepseekKey || deepseekKey.includes('****')) &&
+                    (!openaiKey || openaiKey.includes('****')) &&
+                    (!claudeKey || claudeKey.includes('****'));
+
+                if (isDefaultApi) {
+                    // Show warning modal
+                    showDemoWarningModal(() => {
+                        // User confirmed, proceed with start
+                        sendControlRequest(action, payload);
+                    });
+                } else {
+                    // User has their own API key, proceed directly
+                    sendControlRequest(action, payload);
+                }
+            })
+            .catch(err => {
+                console.error('Failed to check config:', err);
+                // Proceed anyway if config check fails
+                sendControlRequest(action, payload);
+            });
+    } else {
+        sendControlRequest(action, payload);
+    }
+}
+
+function sendControlRequest(action, payload = {}) {
     fetch('/api/control', {
         method: 'POST',
         headers: {
@@ -887,13 +929,99 @@ function setControl(action, payload = {}) {
             ...payload
         })
     })
-        .then(res => res.json())
+        .then(res => {
+            if (res.status === 403) {
+                // Demo expired
+                return res.json().then(data => {
+                    alert(data.detail || 'Demo 时间已用尽');
+                    throw new Error('Demo expired');
+                });
+            }
+            return res.json();
+        })
         .then(data => {
             console.log(`Command ${action} sent.`, data);
             setTimeout(updateDashboard, 200);
         })
         .catch(err => console.error('Control request failed:', err));
 }
+
+function showDemoWarningModal(onConfirm) {
+    const modal = document.createElement('div');
+    modal.id = 'demo-warning-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10001;
+    `;
+
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%);
+        border: 2px solid #ff8c00;
+        border-radius: 12px;
+        padding: 30px;
+        max-width: 480px;
+        box-shadow: 0 10px 40px rgba(255, 140, 0, 0.3);
+    `;
+
+    content.innerHTML = `
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 15px;">⚠️</div>
+            <h2 style="color: #ff8c00; margin: 0 0 15px 0; font-size: 22px;">Demo 模式提示</h2>
+            <p style="color: #e0e6ed; margin: 0 0 20px 0; line-height: 1.6; font-size: 15px;">
+                当前使用的是 <strong style="color: #ff8c00;">默认 LLM API</strong>，<br>
+                仅支持运行 <strong style="color: #ff8c00;">20 分钟</strong>
+            </p>
+            <div style="background: rgba(255, 140, 0, 0.1); border-left: 3px solid #ff8c00; padding: 12px; margin-bottom: 20px; text-align: left;">
+                <p style="margin: 0; color: #94a3b8; font-size: 13px; line-height: 1.5;">
+                    💡 如需无限制使用，请在 <strong>Settings > API Keys</strong> 中填写您自己的 API Key
+                </p>
+            </div>
+            <div style="display: flex; gap: 15px; justify-content: center;">
+                <button id="demo-warning-cancel" style="
+                    background: #4a5568;
+                    color: white;
+                    border: none;
+                    padding: 10px 25px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    cursor: pointer;
+                ">取消</button>
+                <button id="demo-warning-confirm" style="
+                    background: linear-gradient(135deg, #00ff9d 0%, #00cc7e 100%);
+                    color: #1a202c;
+                    border: none;
+                    padding: 10px 25px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    font-weight: bold;
+                    cursor: pointer;
+                ">继续启动</button>
+            </div>
+        </div>
+    `;
+
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    document.getElementById('demo-warning-cancel').addEventListener('click', () => {
+        modal.remove();
+    });
+
+    document.getElementById('demo-warning-confirm').addEventListener('click', () => {
+        modal.remove();
+        if (onConfirm) onConfirm();
+    });
+}
+
 // Expose setControl globally for inline HTML access
 window.setControl = setControl;
 
@@ -969,6 +1097,151 @@ function showAccountAlert(failureCount) {
     document.getElementById('close-alert-btn').addEventListener('click', () => {
         modal.remove();
         alertShown = false; // Allow showing again if issue persists
+    });
+}
+
+// Demo Mode Handling (20-minute limit for default API)
+let demoExpiredShown = false;
+
+function handleDemoMode(demo) {
+    const btnStart = document.getElementById('btn-start');
+
+    // Update timer display if demo is active
+    if (demo.demo_mode_active && !demo.demo_expired) {
+        updateDemoTimer(demo.demo_time_remaining);
+    } else {
+        // Hide timer when not in demo mode
+        const timerEl = document.getElementById('demo-timer');
+        if (timerEl) timerEl.style.display = 'none';
+    }
+
+    // Handle expired state
+    if (demo.demo_expired) {
+        // Disable start button
+        if (btnStart) {
+            btnStart.disabled = true;
+            btnStart.title = 'Demo 时间已用尽，请配置您自己的 API Key';
+            btnStart.style.opacity = '0.5';
+            btnStart.style.cursor = 'not-allowed';
+        }
+
+        // Show expired modal once
+        if (!demoExpiredShown) {
+            showDemoExpiredModal();
+            demoExpiredShown = true;
+        }
+    } else {
+        // Re-enable start button if not expired
+        if (btnStart) {
+            btnStart.disabled = false;
+            btnStart.title = 'Start Trading';
+            btnStart.style.opacity = '1';
+            btnStart.style.cursor = 'pointer';
+        }
+        demoExpiredShown = false;
+    }
+}
+
+function updateDemoTimer(secondsRemaining) {
+    let timerEl = document.getElementById('demo-timer');
+
+    // Create timer element if it doesn't exist
+    if (!timerEl) {
+        timerEl = document.createElement('div');
+        timerEl.id = 'demo-timer';
+        timerEl.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #ff8c00, #ff4500);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(255, 69, 0, 0.4);
+            z-index: 9999;
+        `;
+        document.body.appendChild(timerEl);
+    }
+
+    const minutes = Math.floor(secondsRemaining / 60);
+    const seconds = secondsRemaining % 60;
+    timerEl.innerHTML = `⏱️ Demo: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    timerEl.style.display = 'block';
+
+    // Change color when time is running low
+    if (secondsRemaining < 300) { // Less than 5 minutes
+        timerEl.style.background = 'linear-gradient(135deg, #ff0000, #cc0000)';
+    }
+}
+
+function showDemoExpiredModal() {
+    const modal = document.createElement('div');
+    modal.id = 'demo-expired-modal';
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10001;
+    `;
+
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: linear-gradient(135deg, #1e1e2e 0%, #2a2a3e 100%);
+        border: 2px solid #ff8c00;
+        border-radius: 12px;
+        padding: 30px;
+        max-width: 500px;
+        box-shadow: 0 10px 40px rgba(255, 140, 0, 0.3);
+    `;
+
+    content.innerHTML = `
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 20px;">⏰</div>
+            <h2 style="color: #ff8c00; margin: 0 0 15px 0; font-size: 24px;">Demo 时间已用尽</h2>
+            <p style="color: #94a3b8; margin: 0 0 10px 0; line-height: 1.6;">
+                您已使用默认 API <strong style="color: #ff8c00;">20 分钟</strong>
+            </p>
+            <p style="color: #64748b; margin: 0 0 25px 0; font-size: 14px;">
+                如需继续使用，请配置您自己的 API Key
+            </p>
+            <div style="background: rgba(255, 140, 0, 0.1); border-left: 3px solid #ff8c00; padding: 15px; margin-bottom: 25px; text-align: left;">
+                <p style="margin: 0; color: #e0e6ed; font-size: 14px; line-height: 1.5;">
+                    <strong>如何解除限制:</strong><br>
+                    1. 点击右上角 <strong>⚙️ Settings</strong><br>
+                    2. 在 <strong>API Keys</strong> 标签页填写您的 DeepSeek/OpenAI API Key<br>
+                    3. 点击 <strong>Save Changes</strong> 保存配置<br>
+                    4. 重启程序后即可无限制使用
+                </p>
+            </div>
+            <button id="close-demo-expired-btn" style="
+                background: linear-gradient(135deg, #ff8c00 0%, #ff4500 100%);
+                color: white;
+                border: none;
+                padding: 12px 30px;
+                border-radius: 6px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                transition: all 0.3s;
+            ">
+                我知道了
+            </button>
+        </div>
+    `;
+
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+
+    document.getElementById('close-demo-expired-btn').addEventListener('click', () => {
+        modal.remove();
     });
 }
 

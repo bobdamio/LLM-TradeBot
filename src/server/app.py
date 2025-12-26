@@ -94,16 +94,38 @@ async def check_auth_status(request: Request):
 # API Endpoints
 @app.get("/api/status")
 async def get_status(authenticated: bool = Depends(verify_auth)):
+    import time
+    
+    # Check and update demo expiration status
+    if global_state.demo_mode_active and global_state.demo_start_time:
+        elapsed = time.time() - global_state.demo_start_time
+        if elapsed >= global_state.demo_limit_seconds:
+            global_state.demo_expired = True
+            if global_state.execution_mode == "Running":
+                global_state.execution_mode = "Stopped"
+                global_state.add_log("⏰ Demo 时间已到 (20分钟限制)，系统已自动停止。请配置您自己的 API Key 继续使用。")
+    
+    # Calculate demo time remaining
+    demo_time_remaining = 0
+    if global_state.demo_mode_active and global_state.demo_start_time and not global_state.demo_expired:
+        elapsed = time.time() - global_state.demo_start_time
+        demo_time_remaining = max(0, global_state.demo_limit_seconds - elapsed)
+    
     data = {
         "system": {
             "running": global_state.is_running,
             "mode": global_state.execution_mode,
             "is_test_mode": global_state.is_test_mode,
             "cycle_counter": global_state.cycle_counter,
-            "cycle_interval": global_state.cycle_interval,  # 添加当前间隔
+            "cycle_interval": global_state.cycle_interval,
             "current_cycle_id": global_state.current_cycle_id,
             "uptime_start": global_state.start_time,
             "last_heartbeat": global_state.last_update
+        },
+        "demo": {
+            "demo_mode_active": global_state.demo_mode_active,
+            "demo_expired": global_state.demo_expired,
+            "demo_time_remaining": int(demo_time_remaining)
         },
         "market": {
             "price": global_state.current_price,
@@ -132,20 +154,56 @@ async def get_status(authenticated: bool = Depends(verify_auth)):
         },
         "decision": global_state.latest_decision,
         "decision_history": global_state.decision_history[:10],
-        "trade_history": global_state.trade_history[:20],  # Return recent 20 trades
+        "trade_history": global_state.trade_history[:20],
         "logs": global_state.recent_logs[:50]
     }
     return clean_nans(data)
 
 @app.post("/api/control")
 async def control_bot(cmd: ControlCommand, authenticated: bool = Depends(verify_auth)):
+    import time
     action = cmd.action.lower()
+    
+    # Default API key detection (check if user has configured their own key)
+    DEFAULT_API_KEY_PREFIX = "sk-"  # Most default keys start with this or are empty
+    deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    claude_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    
+    # Consider using default API if all keys are empty or match known demo patterns
+    is_using_default_api = (
+        not deepseek_key or 
+        deepseek_key.startswith("demo_") or 
+        deepseek_key == "your_deepseek_api_key_here"
+    ) and not openai_key and not claude_key
+    
     if action == "start":
+        # Check if demo has expired
+        if global_state.demo_expired:
+            raise HTTPException(
+                status_code=403, 
+                detail="Demo 时间已用尽 (20分钟限制)。请在 Settings > API Keys 中配置您自己的 API Key 后重试。"
+            )
+        
+        # Activate demo mode if using default API
+        if is_using_default_api:
+            if not global_state.demo_mode_active:
+                global_state.demo_mode_active = True
+                global_state.demo_start_time = time.time()
+                global_state.add_log("⚠️ 正在使用默认 API，20分钟后将自动停止。请配置您自己的 API Key 以解除限制。")
+        else:
+            # User has their own API key, disable demo mode
+            global_state.demo_mode_active = False
+            global_state.demo_expired = False
+            global_state.demo_start_time = None
+        
         global_state.execution_mode = "Running"
         global_state.add_log("▶️ System Resumed by User")
+        
     elif action == "pause":
         global_state.execution_mode = "Paused"
         global_state.add_log("⏸️ System Paused by User")
+        
     elif action == "stop":
         global_state.execution_mode = "Stopped"
         global_state.add_log("⏹️ System Stopped by User")
@@ -160,7 +218,12 @@ async def control_bot(cmd: ControlCommand, authenticated: bool = Depends(verify_
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
     
-    return {"status": "success", "mode": global_state.execution_mode}
+    return {
+        "status": "success", 
+        "mode": global_state.execution_mode,
+        "demo_mode_active": global_state.demo_mode_active,
+        "demo_expired": global_state.demo_expired
+    }
 
 @app.post("/api/upload_prompt")
 async def upload_prompt(file: UploadFile = File(...), authenticated: bool = Depends(verify_auth)):

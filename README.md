@@ -17,6 +17,7 @@ Intelligent Multi-Agent Quantitative Trading Bot based on the **Adversarial Deci
 
 **Experience the bot immediately through our web interface:**
 **[👉 Live Dashboard](https://web-production-169bb.up.railway.app/)**
+> **Default Password**: `EthanAlgoX`
 
 ---
 
