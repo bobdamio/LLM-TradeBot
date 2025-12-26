@@ -36,9 +36,9 @@ if DEPLOYMENT_MODE == 'local':
     # Enable detailed LLM logging
     os.environ['ENABLE_DETAILED_LLM_LOGS'] = 'true'
 else:
-    # Railway deployment: Use WebSocket for low latency
+    # Railway deployment: Also use REST API for stability
     if 'USE_WEBSOCKET' not in os.environ:
-        os.environ['USE_WEBSOCKET'] = 'true'
+        os.environ['USE_WEBSOCKET'] = 'false'
     # Disable detailed LLM logging to save disk space
     os.environ['ENABLE_DETAILED_LLM_LOGS'] = 'false'
 
