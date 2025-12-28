@@ -228,10 +228,14 @@ class SharedState:
         self.recent_logs.append(message)
         if len(self.recent_logs) > 500:
             self.recent_logs.pop(0)
-            
-        # Push to file logger (Clean Trading Log)
-        # Avoid recursion: add_log -> log.info -> sink -> add_log
-        log.bind(dashboard=True).info(message)
+    
+    def clear_init_logs(self):
+        """Clear initialization logs when Cycle 1 starts to sync with Recent Decisions."""
+        self.recent_logs.clear()
+        # Log the fresh start
+        msg = "[📊 SYSTEM] Cleared initialization logs - starting fresh from Cycle 1"
+        self.recent_logs.append(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
+        log.info(msg)
     
     def register_log_sink(self):
         """Register a sink to capture all system logs to dashboard"""

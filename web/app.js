@@ -38,7 +38,36 @@ function initChart() {
             scales: {
                 x: {
                     grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                    ticks: { color: '#94a3b8' }
+                    ticks: {
+                        color: '#94a3b8',
+                        maxRotation: 45,
+                        minRotation: 0,
+                        autoSkip: false,
+                        callback: function (value, index, ticks) {
+                            const totalLabels = ticks.length;
+
+                            // Always show first label (first cycle time)
+                            if (index === 0) return this.getLabelForValue(value);
+
+                            // Always show last label
+                            if (index === totalLabels - 1) return this.getLabelForValue(value);
+
+                            // Calculate interval based on total labels
+                            let interval;
+                            if (totalLabels <= 10) interval = 1;        // Show all
+                            else if (totalLabels <= 30) interval = 3;   // Show every 3rd
+                            else if (totalLabels <= 60) interval = 5;   // Show every 5th
+                            else if (totalLabels <= 120) interval = 10; // Show every 10th
+                            else interval = 20;                          // Show every 20th
+
+                            // Show label at intervals
+                            if (index % interval === 0) {
+                                return this.getLabelForValue(value);
+                            }
+
+                            return ''; // Hide this label
+                        }
+                    }
                 },
                 y: {
                     grid: { color: 'rgba(255, 255, 255, 0.05)' },

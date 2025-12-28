@@ -1639,32 +1639,8 @@ class MultiAgentTradingBot:
     # ... existing code ...
     from src.utils.semantic_converter import SemanticConverter
     
-    def _format_choppy_analysis(self, regime_info: Dict) -> str:
-        """Format CHOPPY market analysis for DeepSeek prompt"""
-        if not regime_info or regime_info.get('regime') != 'choppy':
-            return ""
-        
-        choppy = regime_info.get('choppy_analysis', {})
-        if not choppy:
-            return ""
-        
-        range_info = choppy.get('range', {})
-        
-        lines = [
-            "",
-            "### ⚠️ CHOPPY MARKET ANALYSIS (Range Trading Intelligence)",
-            f"- **Squeeze Active**: {'YES 🔴' if choppy.get('squeeze_active') else 'NO'}",
-            f"- **Squeeze Intensity**: {choppy.get('squeeze_intensity', 0):.0f}% (Higher = Breakout More Likely)",
-            f"- **Breakout Probability**: {choppy.get('breakout_probability', 0):.0f}%",
-            f"- **Potential Direction**: {choppy.get('breakout_direction', 'unknown').upper()}",
-            f"- **Range Support**: ${range_info.get('support', 0):,.2f}",
-            f"- **Range Resistance**: ${range_info.get('resistance', 0):,.2f}",
-            f"- **Mean Reversion Signal**: {choppy.get('mean_reversion_signal', 'neutral').upper().replace('_', ' ')}",
-            f"- **Consolidation Bars**: {choppy.get('consolidation_bars', 0)}",
-            f"- **💡 Strategy Hint**: {choppy.get('strategy_hint', 'N/A')}",
-            ""
-        ]
-        return "\n".join(lines)
+    # Note: _format_choppy_analysis was removed as Market Regime analysis 
+    # is now handled by TREND agent and included in trend_analysis above.
 
     def _build_market_context(self, quant_analysis: Dict, predict_result, market_data: Dict, regime_info: Dict = None, position_info: Dict = None) -> str:
         """
@@ -1854,13 +1830,9 @@ class MultiAgentTradingBot:
         context += f"\n{setup_header}\n{setup_analysis}\n"
         context += f"\n{trigger_header}\n{trigger_analysis}\n"
         
-        context += f"""
----
-## 4. Market Regime & Price Position (Auxiliary)
-- Market Regime: {regime_type.upper()} ({min(max(regime_confidence, 0), 100):.0f}% confidence)
-- Price Position: {price_position.upper()} ({min(max(price_position_pct, 0), 100):.1f}% of range)
-{self._format_choppy_analysis(regime_info)}
-"""
+        # Note: Market Regime and Price Position are already calculated by TREND and SETUP agents
+        # and included in their respective analyses above, so we don't duplicate them here.
+        
         return context
 
 # ... locating where vote_result is processed to add semantic analysis
@@ -2031,6 +2003,10 @@ class MultiAgentTradingBot:
                 cycle_num = global_state.cycle_counter
                 cycle_id = f"cycle_{cycle_num:04d}_{int(time.time())}"
                 global_state.current_cycle_id = cycle_id
+                
+                # 🧹 Clear initialization logs when Cycle 1 starts (sync with Recent Decisions)
+                if cycle_num == 1:
+                    global_state.clear_init_logs()
                 
                 # 🧪 Test Mode: Record start of cycle account state (for Net Value Curve)
                 if self.test_mode:
