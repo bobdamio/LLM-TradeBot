@@ -178,7 +178,9 @@ async def get_status(authenticated: bool = Depends(verify_auth)):
             "failure_count": global_state.account_failure_count
         },
         "chart_data": {
-            "equity": global_state.equity_history
+            "equity": global_state.equity_history,
+            "balance_history": global_state.balance_history,
+            "initial_balance": global_state.initial_balance
         },
         "decision": global_state.latest_decision,
         "decision_history": global_state.decision_history[:10],

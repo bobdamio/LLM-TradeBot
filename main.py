@@ -1242,6 +1242,17 @@ class MultiAgentTradingBot:
                             del global_state.virtual_positions[self.current_symbol]
                             
                             log.info(f"💰 [TEST] Closed {side} {self.current_symbol}: PnL=${realized_pnl:.2f}, Bal=${global_state.virtual_balance:.2f}")
+                            
+                            # Record trade to history
+                            global_state.record_trade({
+                                'symbol': self.current_symbol,
+                                'action': f'CLOSE_{side}',
+                                'entry_price': entry_price,
+                                'exit_price': current_price,
+                                'quantity': qty,
+                                'pnl': realized_pnl,
+                                'cycle': global_state.cycle_counter
+                            })
                         else:
                             log.warning(f"⚠️ [TEST] Close ignored - No position for {self.current_symbol}")
                     
@@ -1258,6 +1269,16 @@ class MultiAgentTradingBot:
                             'leverage': order_params.get('leverage', 1)
                         }
                         log.info(f"💰 [TEST] Opened {side} {self.current_symbol} @ ${current_price:,.2f}")
+                        
+                        # Record trade to history
+                        global_state.record_trade({
+                            'symbol': self.current_symbol,
+                            'action': f'OPEN_{side}',
+                            'entry_price': current_price,
+                            'quantity': order_params['quantity'],
+                            'pnl': 0.0,
+                            'cycle': global_state.cycle_counter
+                        })
 
                 # ✅ Save Trade in persistent history
                 # Logic Update: If CLOSING, try to update previous OPEN record. If failing, save new.
@@ -1969,10 +1990,12 @@ class MultiAgentTradingBot:
         # 🧪 Test Mode: Initialize Virtual Account for Chart
         if self.test_mode:
             log.info("🧪 Test Mode: Initializing Virtual Account...")
+            initial_balance = global_state.virtual_balance
+            global_state.init_balance(initial_balance)  # Initialize balance tracking
             global_state.update_account(
-                equity=global_state.virtual_balance,
-                available=global_state.virtual_balance,
-                wallet=global_state.virtual_balance,
+                equity=initial_balance,
+                available=initial_balance,
+                wallet=initial_balance,
                 pnl=0.0
             )
         

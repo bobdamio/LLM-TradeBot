@@ -837,6 +837,16 @@ function renderLogs(logs) {
                 cleanLine.includes('[🎯 SYSTEM]') ||
                 // Cycle separators
                 cleanLine.includes('━━━') ||
+                // System status messages
+                cleanLine.includes('STOPPED') ||
+                cleanLine.includes('PAUSED') ||
+                cleanLine.includes('RESUMED') ||
+                cleanLine.includes('START') ||
+                cleanLine.includes('Cycle #') ||
+                cleanLine.includes('⏹️') ||
+                cleanLine.includes('⏸️') ||
+                cleanLine.includes('▶️') ||
+                cleanLine.includes('🚀') ||
                 // Error/Warning keywords
                 cleanLine.includes('ERROR') ||
                 cleanLine.includes('WARNING') ||
@@ -1812,3 +1822,65 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshBtn.addEventListener('click', loadAccounts);
     }
 });
+
+// ============================================================================
+// Trade History Rendering (Backend Data)
+// ============================================================================
+
+function renderTradeHistory(trades) {
+    const tbody = document.querySelector('#trade-table tbody');
+    if (!tbody) return;
+
+    if (!trades || trades.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">No trades yet</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = trades.map(trade => {
+        const time = trade.recorded_at || trade.timestamp || '-';
+        const openCycle = trade.cycle || '-';
+        const closeCycle = trade.close_cycle || '-';
+        const symbol = trade.symbol || '-';
+        const entryPrice = trade.entry_price ? `$${Number(trade.entry_price).toLocaleString()}` : '-';
+        const posValue = trade.quantity && trade.entry_price ? `$${(trade.quantity * trade.entry_price).toFixed(2)}` : '-';
+        const exitPrice = trade.exit_price ? `$${Number(trade.exit_price).toLocaleString()}` : '-';
+
+        // PnL formatting
+        let pnlHtml = '-';
+        let pnlPctHtml = '-';
+        if (trade.pnl !== undefined && trade.pnl !== null) {
+            const pnl = Number(trade.pnl);
+            const pnlClass = pnl > 0 ? 'pos' : (pnl < 0 ? 'neg' : 'neutral');
+            const pnlSign = pnl > 0 ? '+' : '';
+            pnlHtml = `<span class="val ${pnlClass}">${pnlSign}$${pnl.toFixed(2)}</span>`;
+
+            // Calculate PnL %
+            if (trade.entry_price && trade.quantity) {
+                const posValue = trade.entry_price * trade.quantity;
+                const pnlPct = (pnl / posValue * 100).toFixed(2);
+                pnlPctHtml = `<span class="val ${pnlClass}">${pnlSign}${pnlPct}%</span>`;
+            }
+        }
+
+        // Action indicator
+        const action = (trade.action || '').toUpperCase();
+        let actionIcon = '';
+        if (action.includes('OPEN') && action.includes('LONG')) actionIcon = '🟢';
+        else if (action.includes('OPEN') && action.includes('SHORT')) actionIcon = '🔴';
+        else if (action.includes('CLOSE')) actionIcon = '⚪';
+
+        return `
+            <tr>
+                <td>${time.split(' ')[1] || time}</td>
+                <td>${actionIcon} ${openCycle}</td>
+                <td>${closeCycle}</td>
+                <td>${symbol}</td>
+                <td>${entryPrice}</td>
+                <td>${posValue}</td>
+                <td>${exitPrice}</td>
+                <td>${pnlHtml}</td>
+                <td>${pnlPctHtml}</td>
+            </tr>
+        `;
+    }).join('');
+}

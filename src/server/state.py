@@ -58,6 +58,8 @@ class SharedState:
     
     # Chart Data
     equity_history: List[Dict] = field(default_factory=list)  # [{'time': '12:00', 'value': 1000}, ...]
+    balance_history: List[Dict] = field(default_factory=list)  # [{time, balance, pnl, action}]
+    initial_balance: float = 0.0  # Initial balance when trading started
     
     # Latest Decision & History
     latest_decision: Dict[str, Any] = field(default_factory=dict)
@@ -145,6 +147,58 @@ class SharedState:
             self.decision_history.pop()
         
         self.last_update = datetime.now().strftime("%H:%M:%S")
+    
+    def init_balance(self, balance: float):
+        """Initialize the starting balance for tracking."""
+        self.initial_balance = balance
+        if self.is_test_mode:
+            self.virtual_initial_balance = balance
+            self.virtual_balance = balance
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Add initial point to balance history
+        self.balance_history.append({
+            'time': timestamp,
+            'balance': balance,
+            'pnl': 0.0,
+            'pnl_pct': 0.0,
+            'action': 'INIT',
+            'cycle': 0
+        })
+        log.info(f"[📊 SYSTEM] Balance tracking initialized: ${balance:.2f}")
+    
+    def record_trade(self, trade: Dict):
+        """Record a trade and update balance history."""
+        # Add to trade history
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        trade['recorded_at'] = timestamp
+        self.trade_history.insert(0, trade)  # Prepend (newest first)
+        
+        # Keep last 100 trades
+        if len(self.trade_history) > 100:
+            self.trade_history.pop()
+        
+        # Update balance based on trade result
+        current_balance = self.virtual_balance if self.is_test_mode else self.account_overview.get('total_equity', 0)
+        pnl = trade.get('pnl', 0.0)
+        
+        # Calculate cumulative PnL
+        cumulative_pnl = current_balance - self.initial_balance if self.initial_balance > 0 else 0
+        pnl_pct = (cumulative_pnl / self.initial_balance * 100) if self.initial_balance > 0 else 0
+        
+        # Add to balance history
+        self.balance_history.append({
+            'time': timestamp,
+            'balance': current_balance,
+            'pnl': cumulative_pnl,
+            'pnl_pct': pnl_pct,
+            'action': trade.get('action', 'TRADE'),
+            'symbol': trade.get('symbol', ''),
+            'cycle': self.cycle_counter
+        })
+        
+        # Keep last 500 balance points
+        if len(self.balance_history) > 500:
+            self.balance_history.pop(0)
     
     def record_account_success(self):
         """Record successful account info fetch"""
