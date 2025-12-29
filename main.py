@@ -897,7 +897,8 @@ class MultiAgentTradingBot:
                     'bb_upper': processed_dfs['15m']['bb_upper'].iloc[-1] if 'bb_upper' in processed_dfs['15m'].columns else current_price * 1.02,
                     'bb_middle': processed_dfs['15m']['bb_middle'].iloc[-1] if 'bb_middle' in processed_dfs['15m'].columns else current_price,
                     'bb_lower': processed_dfs['15m']['bb_lower'].iloc[-1] if 'bb_lower' in processed_dfs['15m'].columns else current_price * 0.98,
-                    'trend_direction': trend_1h  # Use actual 1h trend instead of 'final_action'
+                    'trend_direction': trend_1h,  # Use actual 1h trend instead of 'final_action'
+                    'macd_diff': processed_dfs['15m']['macd_diff'].iloc[-1] if 'macd_diff' in processed_dfs['15m'].columns else 0  # 🆕 MACD for 15m analysis
                 }
                 
                 trigger_data = {
@@ -1933,9 +1934,6 @@ class MultiAgentTradingBot:
 - Current Price: ${current_price:,.2f}
 
 {position_section}
-
-- **MACD (15m)**: {macd_semantic} (Diff: {macd_15m if macd_15m else 'N/A'})
-  - Histogram: {'Expanding ↗' if macd_15m and macd_15m > 0 else 'Contracting ↘' if macd_15m else 'N/A'}
 
 ## 2. Four-Layer Strategy Status
 """

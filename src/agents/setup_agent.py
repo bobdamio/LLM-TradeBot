@@ -4,6 +4,7 @@ Setup Agent - 15m Setup Analysis
 Analyzes 15m timeframe data and produces semantic analysis:
 - KDJ oscillator position
 - Bollinger Band position
+- MACD momentum (15m)
 - Entry zone assessment
 """
 
@@ -17,7 +18,7 @@ class SetupAgent:
     """
     15m Setup Analysis Agent
     
-    Input: KDJ, Bollinger Bands, price position
+    Input: KDJ, Bollinger Bands, MACD (15m), price position
     Output: Semantic analysis paragraph
     """
     
@@ -109,6 +110,15 @@ class SetupAgent:
                 stance = 'NEUTRAL'
                 zone = 'WAIT'
             
+            # Determine MACD status
+            macd_diff = data.get('macd_diff', 0)
+            if macd_diff > 0:
+                macd_signal = 'BULLISH'
+            elif macd_diff < 0:
+                macd_signal = 'BEARISH'
+            else:
+                macd_signal = 'NEUTRAL'
+            
             result = {
                 'analysis': analysis,
                 'stance': stance,
@@ -116,7 +126,9 @@ class SetupAgent:
                     'zone': zone,
                     'kdj_j': round(kdj_j, 1),
                     'trend': trend.upper(),
-                    'bb_position': 'ABOVE_MID' if close > bb_middle else 'BELOW_MID'
+                    'bb_position': 'ABOVE_MID' if close > bb_middle else 'BELOW_MID',
+                    'macd_signal': macd_signal,
+                    'macd_diff': round(macd_diff, 2)
                 }
             }
             
@@ -149,13 +161,13 @@ class SetupAgent:
     
     def _get_system_prompt(self) -> str:
         """System prompt for setup analysis"""
-        return """You are a professional crypto setup analyst. Your task is to analyze 15m timeframe data and assess entry positions using KDJ and Bollinger Bands.
+        return """You are a professional crypto setup analyst. Your task is to analyze 15m timeframe data and assess entry positions using KDJ, Bollinger Bands, and MACD.
 
 Output format: 2-3 sentences covering:
 1. KDJ oscillator status (overbought/oversold/neutral)
-2. Price position relative to Bollinger Bands
-3. Entry zone assessment (good entry zone or wait)
-4. Specific recommendation based on trend direction
+2. MACD momentum direction and strength
+3. Price position relative to Bollinger Bands
+4. Entry zone assessment (good entry zone or wait)
 
 Be concise, professional, and objective. Use trading terminology.
 Do NOT use markdown formatting. Output plain text only."""
@@ -170,6 +182,7 @@ Do NOT use markdown formatting. Output plain text only."""
         bb_middle = data.get('bb_middle', 0)
         bb_lower = data.get('bb_lower', 0)
         trend = data.get('trend_direction', 'neutral')
+        macd_diff = data.get('macd_diff', 0)  # 🆕 MACD data
         
         # Determine KDJ status
         if kdj_j > 80:
@@ -193,6 +206,14 @@ Do NOT use markdown formatting. Output plain text only."""
         else:
             bb_status = "BELOW MIDDLE BAND"
         
+        # 🆕 Determine MACD status
+        if macd_diff > 0:
+            macd_status = f"BULLISH (Diff: {macd_diff:+.2f})"
+        elif macd_diff < 0:
+            macd_status = f"BEARISH (Diff: {macd_diff:+.2f})"
+        else:
+            macd_status = "NEUTRAL"
+        
         return f"""Analyze the following 15m setup data for {symbol}:
 
 1h Trend Direction: {trend.upper()}
@@ -202,6 +223,10 @@ KDJ Oscillator:
 - KDJ_K: {kdj_k:.1f}
 - Status: {kdj_status}
 
+MACD (15m):
+- Histogram Diff: {macd_diff:+.2f}
+- Status: {macd_status}
+
 Bollinger Bands:
 - Upper: ${bb_upper:,.2f}
 - Middle: ${bb_middle:,.2f}
@@ -210,7 +235,7 @@ Bollinger Bands:
 - Position: {bb_status}
 
 Provide a 2-3 sentence semantic analysis of the setup situation.
-Consider: For LONG, we want pullback (KDJ<40 or near lower BB). For SHORT, we want rally (KDJ>60 or near upper BB)."""
+Consider: For LONG, we want pullback (KDJ<40 or near lower BB) + bullish MACD. For SHORT, we want rally (KDJ>60 or near upper BB) + bearish MACD."""
 
     def _get_fallback_analysis(self, data: Dict) -> str:
         """Fallback analysis when LLM fails"""
