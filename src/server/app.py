@@ -424,8 +424,146 @@ async def list_exchanges(authenticated: bool = Depends(verify_auth)):
     from src.exchanges import get_supported_exchanges
     return {"exchanges": get_supported_exchanges()}
 
+# ============================================================================
+# Backtest API Endpoints
+# ============================================================================
+
+class BacktestRequest(BaseModel):
+    symbol: str = "BTCUSDT"
+    start_date: str
+    end_date: str
+    initial_capital: float = 10000.0
+    step: int = 3
+    stop_loss_pct: float = 1.0
+    take_profit_pct: float = 2.0
+
+@app.post("/api/backtest/run")
+async def run_backtest(config: BacktestRequest, authenticated: bool = Depends(verify_auth)):
+    """Run a backtest with the given configuration"""
+    from src.backtest.engine import BacktestEngine, BacktestConfig
+    import asyncio
+    import json
+    from datetime import datetime
+    
+    try:
+        bt_config = BacktestConfig(
+            symbol=config.symbol,
+            start_date=config.start_date,
+            end_date=config.end_date,
+            initial_capital=config.initial_capital,
+            step=config.step,
+            stop_loss_pct=config.stop_loss_pct,
+            take_profit_pct=config.take_profit_pct
+        )
+        
+        engine = BacktestEngine(bt_config)
+        result = await engine.run()
+        
+        # Convert to JSON-serializable format
+        equity_curve = []
+        for _, row in result.equity_curve.iterrows():
+            equity_curve.append({
+                'timestamp': row.name.isoformat() if hasattr(row.name, 'isoformat') else str(row.name),
+                'total_equity': row['total_equity'],
+                'cash': row['cash'],
+                'position_value': row['position_value'],
+                'drawdown_pct': row['drawdown_pct']
+            })
+        
+        trades = []
+        for t in result.trades:
+            trades.append({
+                'trade_id': t.trade_id,
+                'symbol': t.symbol,
+                'side': t.side.value,
+                'action': t.action,
+                'quantity': t.quantity,
+                'price': t.price,
+                'timestamp': t.timestamp.isoformat(),
+                'pnl': t.pnl,
+                'pnl_pct': t.pnl_pct,
+                'entry_price': t.entry_price,
+                'holding_time': t.holding_time,
+                'close_reason': t.close_reason
+            })
+        
+        response_data = clean_nans({
+            'status': 'success',
+            'metrics': result.metrics.to_dict(),
+            'equity_curve': equity_curve,
+            'trades': trades,
+            'duration_seconds': result.duration_seconds
+        })
+        
+        # Save backtest log to file
+        try:
+            log_dir = os.path.join(BASE_DIR, 'logs', 'backtest')
+            os.makedirs(log_dir, exist_ok=True)
+            
+            run_time = datetime.now()
+            log_filename = f"backtest_{config.symbol}_{run_time.strftime('%Y%m%d_%H%M%S')}.json"
+            log_path = os.path.join(log_dir, log_filename)
+            
+            log_data = {
+                'run_time': run_time.isoformat(),
+                'config': {
+                    'symbol': config.symbol,
+                    'start_date': config.start_date,
+                    'end_date': config.end_date,
+                    'initial_capital': config.initial_capital,
+                    'step': config.step,
+                    'stop_loss_pct': config.stop_loss_pct,
+                    'take_profit_pct': config.take_profit_pct
+                },
+                'metrics': response_data['metrics'],
+                'trades_summary': {
+                    'total': len(trades),
+                    'trades': trades[-20:] if len(trades) > 20 else trades  # Last 20 trades only
+                },
+                'duration_seconds': result.duration_seconds
+            }
+            
+            with open(log_path, 'w', encoding='utf-8') as f:
+                json.dump(log_data, f, indent=2, ensure_ascii=False)
+            
+            print(f"📝 Backtest log saved: {log_path}")
+        except Exception as log_error:
+            print(f"⚠️ Failed to save backtest log: {log_error}")
+        
+        return response_data
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/backtest/history")
+async def get_backtest_history(authenticated: bool = Depends(verify_auth)):
+    """Get list of saved backtest reports"""
+    reports_dir = os.path.join(BASE_DIR, 'reports')
+    if not os.path.exists(reports_dir):
+        return {"reports": []}
+    
+    reports = []
+    for f in os.listdir(reports_dir):
+        if f.endswith('.html') and f.startswith('backtest_'):
+            path = os.path.join(reports_dir, f)
+            reports.append({
+                'filename': f,
+                'path': f'/reports/{f}',
+                'created': os.path.getmtime(path)
+            })
+    
+    reports.sort(key=lambda x: x['created'], reverse=True)
+    return {"reports": reports[:20]}
+
 # Serve Static Files
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+
+# Serve Reports Directory
+reports_dir = os.path.join(BASE_DIR, 'reports')
+if os.path.exists(reports_dir):
+    app.mount("/reports", StaticFiles(directory=reports_dir), name="reports")
 
 # Root Route -> Checks login
 @app.get("/")
@@ -440,3 +578,12 @@ async def read_root(request: Request):
 @app.get("/login")
 async def read_login():
     return FileResponse(os.path.join(WEB_DIR, 'login.html'))
+
+@app.get("/backtest")
+async def read_backtest(request: Request):
+    """Backtest page"""
+    try:
+        verify_auth(request)
+        return FileResponse(os.path.join(WEB_DIR, 'backtest.html'))
+    except HTTPException:
+        return RedirectResponse("/login")

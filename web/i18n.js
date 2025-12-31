@@ -9,6 +9,7 @@ const i18n = {
 
         // Buttons
         'btn.settings': 'Settings',
+        'btn.backtest': 'Backtest',
         'btn.logout': 'Exit',
         'btn.start': 'Start Trading',
         'btn.pause': 'Pause Trading',
@@ -137,7 +138,33 @@ const i18n = {
         'agent.mentor.role': 'Trade Review Analysis. Continuous Evolution.',
         'agent.mentor.feat1': 'Triggers LLM Deep Review every 10 trades',
         'agent.mentor.feat2': 'Pattern Recognition: Success/Failure summary',
-        'agent.mentor.feat3': 'Insight Injection: Feedback to Critic for optimization'
+        'agent.mentor.feat3': 'Insight Injection: Feedback to Critic for optimization',
+
+        // Backtest Page
+        'backtest.title': '🔬 Backtesting',
+        'backtest.config': '⚙️ Configuration',
+        'backtest.symbols': 'Symbols (Multi-Select)',
+        'backtest.start': 'Start Date',
+        'backtest.end': 'End Date',
+        'backtest.capital': 'Initial Capital (USDT)',
+        'backtest.timestep': 'Time Step',
+        'backtest.stoploss': 'Stop Loss (%)',
+        'backtest.takeprofit': 'Take Profit (%)',
+        'backtest.advanced': '⚙️ Advanced Settings',
+        'backtest.leverage': 'Leverage',
+        'backtest.margin': 'Margin Mode',
+        'backtest.contract': 'Contract Type',
+        'backtest.feetier': 'Fee Tier',
+        'backtest.funding': 'Include Funding Rate Settlement',
+        'backtest.run': '▶️ Run Backtest',
+        'backtest.running': '⏳ Running Backtest...',
+        'backtest.results': '📊 Results',
+        'backtest.history': '📜 Recent Backtests',
+        'backtest.returns': '📈 Returns',
+        'backtest.risk': '⚠️ Risk',
+        'backtest.trading': '🔄 Trading',
+        'backtest.trades': '📋 All Trades',
+        'backtest.back': '← Back to Dashboard'
     },
 
     zh: {
@@ -149,6 +176,7 @@ const i18n = {
 
         // Buttons
         'btn.settings': '设置',
+        'btn.backtest': '回测',
         'btn.logout': '退出',
         'btn.start': '开始交易',
         'btn.pause': '暂停交易',
@@ -277,7 +305,33 @@ const i18n = {
         'agent.mentor.role': '交易复盘分析。持续进化。',
         'agent.mentor.feat1': '每10笔交易触发LLM深度复盘',
         'agent.mentor.feat2': '模式识别：成功/失败总结',
-        'agent.mentor.feat3': '洞察注入：反馈给评判者以优化'
+        'agent.mentor.feat3': '洞察注入：反馈给评判者以优化',
+
+        // Backtest Page
+        'backtest.title': '🔬 策略回测',
+        'backtest.config': '⚙️ 配置',
+        'backtest.symbols': '交易对（多选）',
+        'backtest.start': '开始日期',
+        'backtest.end': '结束日期',
+        'backtest.capital': '初始资金 (USDT)',
+        'backtest.timestep': '时间步长',
+        'backtest.stoploss': '止损 (%)',
+        'backtest.takeprofit': '止盈 (%)',
+        'backtest.advanced': '⚙️ 高级设置',
+        'backtest.leverage': '杠杆倍数',
+        'backtest.margin': '保证金模式',
+        'backtest.contract': '合约类型',
+        'backtest.feetier': '费率等级',
+        'backtest.funding': '包含资金费率结算',
+        'backtest.run': '▶️ 运行回测',
+        'backtest.running': '⏳ 正在运行回测...',
+        'backtest.results': '📊 回测结果',
+        'backtest.history': '📜 历史记录',
+        'backtest.returns': '📈 收益',
+        'backtest.risk': '⚠️ 风险',
+        'backtest.trading': '🔄 交易',
+        'backtest.trades': '📋 全部交易',
+        'backtest.back': '← 返回控制台'
     }
 };
 
