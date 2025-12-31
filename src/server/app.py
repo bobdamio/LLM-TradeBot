@@ -440,12 +440,16 @@ class BacktestRequest(BaseModel):
 
 @app.post("/api/backtest/run")
 async def run_backtest(config: BacktestRequest, authenticated: bool = Depends(verify_auth)):
-    """Run a backtest with the given configuration"""
+    """Run a backtest with the given configuration (Streaming)"""
     from src.backtest.engine import BacktestEngine, BacktestConfig
+    from fastapi.responses import StreamingResponse
     import asyncio
     import json
     from datetime import datetime
-    
+    import uuid
+    import math
+    import logging
+
     try:
         bt_config = BacktestConfig(
             symbol=config.symbol,
@@ -453,126 +457,149 @@ async def run_backtest(config: BacktestRequest, authenticated: bool = Depends(ve
             end_date=config.end_date,
             initial_capital=config.initial_capital,
             step=config.step,
-            step=config.step,
             stop_loss_pct=config.stop_loss_pct,
             take_profit_pct=config.take_profit_pct,
             strategy_mode=config.strategy_mode
         )
         
         engine = BacktestEngine(bt_config)
-        result = await engine.run()
         
-        # Convert to JSON-serializable format
-        equity_curve = []
-        for _, row in result.equity_curve.iterrows():
-            equity_curve.append({
-                'timestamp': row.name.isoformat() if hasattr(row.name, 'isoformat') else str(row.name),
-                'total_equity': row['total_equity'],
-                'cash': row['cash'],
-                'position_value': row['position_value'],
-                'drawdown_pct': row['drawdown_pct']
-            })
+        # Generator for Streaming Response
+        async def event_generator():
+            queue = asyncio.Queue()
+            
+            # Progress callback (Async)
+            async def progress_callback(current, total, pct):
+                # Simple throttling: send every 2% or every 10 steps
+                if current % 10 == 0 or current == total - 1:
+                    await queue.put({
+                        "type": "progress",
+                        "current": current,
+                        "total": total,
+                        "percent": round(pct, 1)
+                    })
+            
+            # Run engine in background task
+            async def run_engine():
+                try:
+                    result = await engine.run(progress_callback=progress_callback)
+                    
+                    # --- Data Processing ---
+                    equity_curve = []
+                    for _, row in result.equity_curve.iterrows():
+                        equity_curve.append({
+                            'timestamp': row.name.isoformat() if hasattr(row.name, 'isoformat') else str(row.name),
+                            'total_equity': float(row['total_equity']),
+                            'drawdown_pct': float(row['drawdown_pct'])
+                        })
+                    
+                    trades = []
+                    for t in result.trades:
+                        trades.append({
+                            'trade_id': getattr(t, 'trade_id', str(uuid.uuid4())),
+                            'symbol': t.symbol,
+                            'side': t.side.value,
+                            'action': t.action,
+                            'quantity': float(t.quantity or 0),
+                            'price': float(t.price or 0),
+                            'timestamp': t.timestamp.isoformat(),
+                            'pnl': float(t.pnl or 0),
+                            'pnl_pct': float(t.pnl_pct or 0),
+                            'entry_price': float(t.entry_price or 0),
+                            'holding_time': float(t.holding_time or 0),
+                            'close_reason': t.close_reason
+                        })
+                    
+                    # Helper for NaNs
+                    def recursive_clean(obj):
+                        if isinstance(obj, float):
+                            if math.isnan(obj) or math.isinf(obj): return 0.0
+                            return obj
+                        if isinstance(obj, dict):
+                            return {k: recursive_clean(v) for k, v in obj.items()}
+                        if isinstance(obj, list):
+                            return [recursive_clean(v) for v in obj]
+                        return obj
+
+                    response_data = recursive_clean({
+                        'metrics': result.metrics.to_dict(),
+                        'equity_curve': equity_curve,
+                        'trades': trades,
+                        'duration_seconds': result.duration_seconds
+                    })
+
+                    # --- 1. JSON File Logging ---
+                    try:
+                        log_dir = os.path.join(BASE_DIR, 'logs', 'backtest')
+                        os.makedirs(log_dir, exist_ok=True)
+                        
+                        run_time = datetime.now()
+                        log_filename = f"backtest_{config.symbol}_{run_time.strftime('%Y%m%d_%H%M%S')}.json"
+                        log_path = os.path.join(log_dir, log_filename)
+                        
+                        log_data = {
+                            'run_time': run_time.isoformat(),
+                            'config': config.dict(),
+                            'metrics': response_data['metrics'],
+                            'trades_summary': {
+                                'total': len(trades),
+                                'trades': trades[-20:] if len(trades) > 20 else trades
+                            },
+                            'duration_seconds': result.duration_seconds
+                        }
+                        
+                        with open(log_path, 'w', encoding='utf-8') as f:
+                            json.dump(log_data, f, indent=2, ensure_ascii=False)
+                        print(f"📝 Backtest log saved: {log_path}")
+                    except Exception as log_err:
+                        print(f"⚠️ Log save failed: {log_err}")
+
+                    # --- 2. Database Storage ---
+                    try:
+                        from src.backtest.storage import BacktestStorage
+                        storage = BacktestStorage()
+                        run_id = f"bt_{uuid.uuid4().hex[:12]}"
+                        
+                        storage.save_backtest(
+                            run_id=run_id,
+                            config=config.dict(),
+                            metrics=response_data['metrics'],
+                            trades=trades,
+                            equity_curve=equity_curve
+                        )
+                        print(f"📊 Backtest saved to DB: {run_id}")
+                        response_data['run_id'] = run_id
+                    except Exception as db_err:
+                        # Log full traceback for DB error
+                        # import traceback
+                        # traceback.print_exc()
+                        print(f"⚠️ DB save failed: {db_err}")
+
+                    # --- 3. Send Final Result ---
+                    await queue.put({
+                        "type": "result",
+                        "data": response_data
+                    })
+                    
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    await queue.put({"type": "error", "message": str(e)})
+                finally:
+                    await queue.put(None) # End of stream
+
+            # Start the engine task
+            asyncio.create_task(run_engine())
+            
+            # Stream Loop
+            while True:
+                data = await queue.get()
+                if data is None:
+                    break
+                yield json.dumps(data) + "\n"
         
-        trades = []
-        for t in result.trades:
-            trades.append({
-                'trade_id': t.trade_id,
-                'symbol': t.symbol,
-                'side': t.side.value,
-                'action': t.action,
-                'quantity': t.quantity,
-                'price': t.price,
-                'timestamp': t.timestamp.isoformat(),
-                'pnl': t.pnl,
-                'pnl_pct': t.pnl_pct,
-                'entry_price': t.entry_price,
-                'holding_time': t.holding_time,
-                'close_reason': t.close_reason
-            })
-        
-        response_data = clean_nans({
-            'status': 'success',
-            'metrics': result.metrics.to_dict(),
-            'equity_curve': equity_curve,
-            'trades': trades,
-            'duration_seconds': result.duration_seconds
-        })
-        
-        # Save backtest log to file
-        try:
-            log_dir = os.path.join(BASE_DIR, 'logs', 'backtest')
-            os.makedirs(log_dir, exist_ok=True)
-            
-            run_time = datetime.now()
-            log_filename = f"backtest_{config.symbol}_{run_time.strftime('%Y%m%d_%H%M%S')}.json"
-            log_path = os.path.join(log_dir, log_filename)
-            
-            log_data = {
-                'run_time': run_time.isoformat(),
-                'config': {
-                    'symbol': config.symbol,
-                    'start_date': config.start_date,
-                    'end_date': config.end_date,
-                    'initial_capital': config.initial_capital,
-                    'step': config.step,
-                    'stop_loss_pct': config.stop_loss_pct,
-                    'take_profit_pct': config.take_profit_pct
-                },
-                'metrics': response_data['metrics'],
-                'trades_summary': {
-                    'total': len(trades),
-                    'trades': trades[-20:] if len(trades) > 20 else trades  # Last 20 trades only
-                },
-                'duration_seconds': result.duration_seconds
-            }
-            
-            with open(log_path, 'w', encoding='utf-8') as f:
-                json.dump(log_data, f, indent=2, ensure_ascii=False)
-            
-            print(f"📝 Backtest log saved: {log_path}")
-        except Exception as log_error:
-            print(f"⚠️ Failed to save backtest log: {log_error}")
-        
-        # Save to database for analytics
-        try:
-            from src.backtest.storage import BacktestStorage
-            import uuid
-            
-            storage = BacktestStorage()
-            run_id = f"bt_{uuid.uuid4().hex[:12]}"
-            
-            storage.save_backtest(
-                run_id=run_id,
-                config={
-                    'symbol': config.symbol,
-                    'symbols': [config.symbol],  # TODO: support multi-symbol
-                    'start_date': config.start_date,
-                    'end_date': config.end_date,
-                    'initial_capital': config.initial_capital,
-                    'step': config.step,
-                    'stop_loss_pct': config.stop_loss_pct,
-                    'take_profit_pct': config.take_profit_pct,
-                    'strategy_mode': config.strategy_mode,
-                    'leverage': getattr(config, 'leverage', 10),
-                    'margin_mode': getattr(config, 'margin_mode', 'cross'),
-                    'contract_type': getattr(config, 'contract_type', 'linear'),
-                    'fee_tier': getattr(config, 'fee_tier', 'vip0'),
-                    'include_funding': getattr(config, 'include_funding', True),
-                    'duration_seconds': result.duration_seconds
-                },
-                metrics=response_data['metrics'],
-                trades=trades,
-                equity_curve=equity_curve
-            )
-            
-            print(f"📊 Backtest saved to database: {run_id}")
-            response_data['run_id'] = run_id
-            
-        except Exception as db_error:
-            print(f"⚠️ Failed to save to database: {db_error}")
-        
-        return response_data
-        
+        return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
     except Exception as e:
         import traceback
         traceback.print_exc()

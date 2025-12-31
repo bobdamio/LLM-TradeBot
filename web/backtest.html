@@ -1026,7 +1026,7 @@
                 resultsSection.classList.remove('active');
 
                 // Update progress
-                updateProgress(0, 'Fetching historical data...');
+                updateProgress(0, 'Initializing...');
 
                 try {
                     const response = await fetch('/api/backtest/run', {
@@ -1039,17 +1039,51 @@
                         throw new Error(`HTTP ${response.status}: ${await response.text()}`);
                     }
 
-                    const result = await response.json();
+                    // Stream Reader
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
 
-                    // Hide progress, show results
-                    progressSection.classList.remove('active');
-                    resultsSection.classList.add('active');
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) break;
 
-                    // Render results
-                    renderResults(result);
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
 
-                    // Save to history
-                    saveToHistory(config, result);
+                        // Keep the last partial line in buffer
+                        buffer = lines.pop();
+
+                        for (const line of lines) {
+                            if (!line.trim()) continue;
+
+                            try {
+                                const msg = JSON.parse(line);
+
+                                if (msg.type === 'progress') {
+                                    updateProgress(msg.percent, `Running... ${msg.percent}%`);
+                                } else if (msg.type === 'result') {
+                                    // Final result
+                                    const result = msg.data;
+                                    progressSection.classList.remove('active');
+                                    resultsSection.classList.add('active');
+
+                                    // Use i18n for text if available, fallback to English
+                                    const t = window.i18n?.[window.currentLang] || window.i18n?.['en'];
+
+                                    renderResults(result);
+                                    saveToHistory(config, result);
+
+                                    // Stop reading if result received
+                                    return;
+                                } else if (msg.type === 'error') {
+                                    throw new Error(msg.message);
+                                }
+                            } catch (e) {
+                                console.error('Stream parsing error:', e, line);
+                            }
+                        }
+                    }
 
                 } catch (error) {
                     console.error('Backtest failed:', error);
@@ -1058,6 +1092,8 @@
                 } finally {
                     btn.disabled = false;
                     btn.innerHTML = '▶️ Run Backtest';
+                    // Re-apply language to button text
+                    if (window.applyLanguage) window.applyLanguage();
                 }
             }
 
