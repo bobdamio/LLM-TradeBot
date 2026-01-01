@@ -585,39 +585,110 @@ async def run_backtest(config: BacktestRequest, authenticated: bool = Depends(ve
                     except Exception as db_err:
                         print(f"⚠️ DB save failed: {db_err}")
 
-                    # --- 2. JSON File Logging (Now uses DB ID) ---
+                    # --- 2. Comprehensive Folder Logging (Now uses DB ID) ---
                     try:
-                        log_dir = os.path.join(BASE_DIR, 'logs', 'backtest')
-                        os.makedirs(log_dir, exist_ok=True)
-                        
                         run_time = datetime.now()
-                        # Optimization: Filename includes ID and Start Date
-                        # Format: backtest_{id}_{symbol}_{start_date}_{run_time}.json
-                        # Start date from config (e.g. 20240101)
                         clean_start = config.start_date.replace('-', '').replace('/', '')
-                        id_str = f"#{db_id}" if db_id else "no_id"
+                        clean_end = config.end_date.replace('-', '').replace('/', '')
+                        id_str = f"id{db_id}" if db_id else "id_unknown"
                         
-                        log_filename = f"backtest_{id_str}_{config.symbol}_{clean_start}_{run_time.strftime('%H%M%S')}.json"
-                        log_path = os.path.join(log_dir, log_filename)
+                        # Create dedicated folder for this backtest
+                        folder_name = f"{run_time.strftime('%Y%m%d_%H%M%S')}_{id_str}_{clean_start}_{clean_end}"
+                        backtest_dir = os.path.join(BASE_DIR, 'logs', 'backtest', folder_name)
+                        os.makedirs(backtest_dir, exist_ok=True)
                         
-                        log_data = {
-                            'id': db_id,
-                            'run_id': run_id,
-                            'run_time': run_time.isoformat(),
-                            'config': config.dict(),
-                            'metrics': response_data['metrics'],
-                            'trades_summary': {
-                                'total': len(trades),
-                                'trades': trades[-20:] if len(trades) > 20 else trades
-                            },
-                            'duration_seconds': result.duration_seconds
-                        }
+                        # 1. Save config
+                        config_path = os.path.join(backtest_dir, 'config.json')
+                        with open(config_path, 'w', encoding='utf-8') as f:
+                            json.dump({
+                                'id': db_id,
+                                'run_id': run_id,
+                                'run_time': run_time.isoformat(),
+                                'config': config.dict()
+                            }, f, indent=2, ensure_ascii=False)
                         
-                        with open(log_path, 'w', encoding='utf-8') as f:
-                            json.dump(log_data, f, indent=2, ensure_ascii=False)
-                        print(f"📝 Backtest log saved: {log_path}")
+                        # 2. Save results summary
+                        results_path = os.path.join(backtest_dir, 'results.json')
+                        with open(results_path, 'w', encoding='utf-8') as f:
+                            json.dump({
+                                'id': db_id,
+                                'run_id': run_id,
+                                'metrics': response_data['metrics'],
+                                'duration_seconds': result.duration_seconds
+                            }, f, indent=2, ensure_ascii=False)
+                        
+                        # 3. Save all trades
+                        trades_path = os.path.join(backtest_dir, 'trades.json')
+                        with open(trades_path, 'w', encoding='utf-8') as f:
+                            json.dump({
+                                'total_trades': len(trades),
+                                'trades': trades
+                            }, f, indent=2, ensure_ascii=False)
+                        
+                        # 4. Save equity curve
+                        equity_path = os.path.join(backtest_dir, 'equity_curve.json')
+                        with open(equity_path, 'w', encoding='utf-8') as f:
+                            json.dump({
+                                'equity_curve': equity_curve
+                            }, f, indent=2, ensure_ascii=False)
+                        
+                        # 5. Save decisions (agent processing data)
+                        decisions_path = os.path.join(backtest_dir, 'decisions.json')
+                        with open(decisions_path, 'w', encoding='utf-8') as f:
+                            json.dump({
+                                'total_decisions': len(decisions),
+                                'decisions': decisions
+                            }, f, indent=2, ensure_ascii=False)
+                        
+                        # 6. Save LLM logs (if any)
+                        llm_log_count = 0
+                        if hasattr(engine, 'agent_runner') and engine.agent_runner and hasattr(engine.agent_runner, 'llm_logs'):
+                            llm_logs = engine.agent_runner.llm_logs
+                            if llm_logs:
+                                llm_dir = os.path.join(backtest_dir, 'llm_logs')
+                                os.makedirs(llm_dir, exist_ok=True)
+                                
+                                for idx, log_entry in enumerate(llm_logs):
+                                    # Create markdown file for each LLM interaction
+                                    log_filename = f"llm_log_{idx+1:04d}_{log_entry['timestamp'].replace(':', '').replace('-', '')[:15]}.md"
+                                    log_path = os.path.join(llm_dir, log_filename)
+                                    
+                                    # Format as markdown
+                                    md_content = f"""# LLM Decision Log #{idx+1}
+
+**Timestamp**: {log_entry['timestamp']}
+
+## Market Context
+
+{log_entry['context']}
+
+## LLM Response
+
+```json
+{json.dumps(log_entry['llm_response'], indent=2, ensure_ascii=False)}
+```
+
+## Final Decision
+
+- **Action**: {log_entry['final_decision']['action']}
+- **Confidence**: {log_entry['final_decision']['confidence']}%
+- **Reason**: {log_entry['final_decision']['reason']}
+"""
+                                    with open(log_path, 'w', encoding='utf-8') as f:
+                                        f.write(md_content)
+                                
+                                llm_log_count = len(llm_logs)
+                        
+                        print(f"📁 Backtest data saved to folder: {backtest_dir}")
+                        print(f"   ├── config.json (input configuration)")
+                        print(f"   ├── results.json (metrics summary)")
+                        print(f"   ├── trades.json ({len(trades)} trades)")
+                        print(f"   ├── equity_curve.json ({len(equity_curve)} points)")
+                        print(f"   ├── decisions.json ({len(decisions)} agent decisions)")
+                        if llm_log_count > 0:
+                            print(f"   └── llm_logs/ ({llm_log_count} LLM interactions)")
                     except Exception as log_err:
-                        print(f"⚠️ Log save failed: {log_err}")
+                        print(f"⚠️ Folder logging failed: {log_err}")
 
                     # --- 3. Send Final Result ---
                     await queue.put({

@@ -186,6 +186,9 @@ class BacktestAgentRunner:
         self.decision_core = DecisionCoreAgent()
         self.quant_analyst = QuantAnalystAgent() # Replaces legacy calculator
         
+        # LLM log collection for backtest
+        self.llm_logs = []  # Store LLM interaction logs
+        
         # Initialize LLM engine if enabled
         if self.config.get('use_llm', False):
             from src.strategy.llm_engine import StrategyEngine
@@ -200,6 +203,21 @@ class BacktestAgentRunner:
         Process one backtest step
         """
         try:
+            # OPTIMIZATION: Skip expensive analysis during warmup period
+            # When we don't have enough data, technical indicators are unreliable
+            is_warmup = len(snapshot.stable_1h) < 60
+            
+            if is_warmup:
+                # Fast path: return neutral decision without analysis
+                return {
+                    'action': 'hold',
+                    'confidence': 0,
+                    'reason': 'Warmup period - insufficient data for analysis',
+                    'vote_details': {},
+                    'weighted_score': 0,
+                    'llm_enhanced': False
+                }
+            
             # 1. Calculate Signals using REAL QuantAnalystAgent
             # Use await since analyze_all_timeframes is async
             quant_analysis = await self.quant_analyst.analyze_all_timeframes(snapshot)
@@ -297,6 +315,19 @@ class BacktestAgentRunner:
                 vote_details={},
                 multi_period_aligned=False
             )
+            
+            # Save LLM log for backtest
+            log_entry = {
+                'timestamp': datetime.now().isoformat(),
+                'context': context_text,
+                'llm_response': llm_result_dict,
+                'final_decision': {
+                    'action': llm_result.action,
+                    'confidence': llm_result.confidence,
+                    'reason': llm_result.reason
+                }
+            }
+            self.llm_logs.append(log_entry)
             
             log.info(f"🤖 LLM Decision: {llm_result.action} (confidence: {llm_result.confidence}%)")
             return llm_result

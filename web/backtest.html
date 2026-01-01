@@ -1665,7 +1665,7 @@
                 // Update ID display
                 const idEl = document.getElementById('resultIdDisplay');
                 if (result.id) {
-                    idEl.textContent = 'Run #' + result.id;
+                    idEl.textContent = 'Run id' + result.id;
                     idEl.title = `DB ID: ${result.id}\nUUID: ${result.run_id || 'N/A'}`;
                     idEl.style.display = 'block';
                 } else if (result.run_id) {
@@ -1861,7 +1861,7 @@
                     const capitalDisplay = h.initialCapital ? `$${h.initialCapital.toLocaleString()}` : 'N/A';
                     const hasData = h.equityCurve && h.equityCurve.length > 0;
 
-                    const idDisplay = h.id ? `#${h.id}` : (h.runId ? `${h.runId.substring(3, 9)}..` : '');
+                    const idDisplay = h.id ? `id${h.id}` : (h.runId ? `${h.runId.substring(3, 9)}..` : '');
 
                     const symbols = Array.isArray(h.symbols) ? h.symbols : [h.symbol];
                     const symbolsDisplay = symbols.join(', ');
@@ -1935,7 +1935,7 @@
                 // Update ID display
                 const idEl = document.getElementById('resultIdDisplay');
                 if (h.id) {
-                    idEl.textContent = 'Run #' + h.id;
+                    idEl.textContent = 'Run id' + h.id;
                     idEl.title = `DB ID: ${h.id}\nUUID: ${h.runId || 'N/A'}`;
                     idEl.style.display = 'block';
                 } else if (h.runId) {

@@ -276,71 +276,78 @@ class BacktestEngine:
                 # 执行交易
                 await self._execute_decision(decision, current_price, timestamp)
                 
-                # 记录净值
-                self.portfolio.record_equity(timestamp, prices)
+                # 记录净值 (OPTIMIZATION: Sample every 12 steps or on key events)
+                should_record_equity = (i % 12 == 0) or (i == total - 1) or (decision['action'] != 'hold')
+                if should_record_equity:
+                    self.portfolio.record_equity(timestamp, prices)
                 
                 
                 # 进度回调（包含实时收益数据和增量可视化数据）
+                # OPTIMIZATION: Only send progress every 2% or every 50 steps to reduce overhead
                 if progress_callback:
-                    current_equity = self.portfolio.get_current_equity(prices)
-                    profit = current_equity - self.config.initial_capital
-                    profit_pct = (profit / self.config.initial_capital) * 100
+                    progress_pct = (i / total * 100) if total > 0 else 0
+                    should_send = (i % 50 == 0) or (i == total - 1) or (progress_pct % 2 < (100 / total))
                     
-                    # 获取最新的净值曲线点
-                    latest_equity_point = None
-                    if self.portfolio.equity_curve:
-                        point = self.portfolio.equity_curve[-1]
-                        latest_equity_point = {
-                            'timestamp': point.timestamp.isoformat(),
-                            'total_equity': float(point.total_equity),
-                            'drawdown_pct': float(point.drawdown_pct)
-                        }
-                    
-                    # 获取最新交易（最近5笔）
-                    recent_trades = []
-                    for trade in self.portfolio.trades[-5:]:
-                        recent_trades.append({
-                            'timestamp': trade.timestamp.isoformat(),
-                            'side': trade.side.value,
-                            'action': trade.action,
-                            'price': float(trade.price),
-                            'pnl': float(trade.pnl),
-                            'pnl_pct': float(trade.pnl_pct)
-                        })
-                    
-                    # 计算实时指标
-                    trades_count = len(self.portfolio.trades)
-                    winning_trades = sum(1 for t in self.portfolio.trades if t.pnl > 0 and t.action == 'close')
-                    win_rate = (winning_trades / trades_count * 100) if trades_count > 0 else 0
-                    
-                    if asyncio.iscoroutinefunction(progress_callback):
-                         await progress_callback(
-                             i, total, i / total * 100,
-                             current_equity=current_equity,
-                             profit=profit,
-                             profit_pct=profit_pct,
-                             equity_point=latest_equity_point,
-                             recent_trades=recent_trades,
-                             metrics={
-                                 'total_trades': trades_count,
-                                 'win_rate': win_rate,
-                                 'max_drawdown_pct': self.portfolio.equity_curve[-1].drawdown_pct if self.portfolio.equity_curve else 0
-                             }
-                         )
-                    else:
-                        progress_callback(
-                            i, total, i / total * 100,
-                            current_equity=current_equity,
-                            profit=profit,
-                            profit_pct=profit_pct,
-                            equity_point=latest_equity_point,
-                            recent_trades=recent_trades,
-                            metrics={
-                                'total_trades': trades_count,
-                                'win_rate': win_rate,
-                                'max_drawdown_pct': self.portfolio.equity_curve[-1].drawdown_pct if self.portfolio.equity_curve else 0
+                    if should_send:
+                        current_equity = self.portfolio.get_current_equity(prices)
+                        profit = current_equity - self.config.initial_capital
+                        profit_pct = (profit / self.config.initial_capital) * 100
+                        
+                        # 获取最新的净值曲线点
+                        latest_equity_point = None
+                        if self.portfolio.equity_curve:
+                            point = self.portfolio.equity_curve[-1]
+                            latest_equity_point = {
+                                'timestamp': point.timestamp.isoformat(),
+                                'total_equity': float(point.total_equity),
+                                'drawdown_pct': float(point.drawdown_pct)
                             }
-                        )
+                        
+                        # 获取最新交易（最近5笔）
+                        recent_trades = []
+                        for trade in self.portfolio.trades[-5:]:
+                            recent_trades.append({
+                                'timestamp': trade.timestamp.isoformat(),
+                                'side': trade.side.value,
+                                'action': trade.action,
+                                'price': float(trade.price),
+                                'pnl': float(trade.pnl),
+                                'pnl_pct': float(trade.pnl_pct)
+                            })
+                        
+                        # 计算实时指标
+                        trades_count = len(self.portfolio.trades)
+                        winning_trades = sum(1 for t in self.portfolio.trades if t.pnl > 0 and t.action == 'close')
+                        win_rate = (winning_trades / trades_count * 100) if trades_count > 0 else 0
+                        
+                        if asyncio.iscoroutinefunction(progress_callback):
+                             await progress_callback(
+                                 i, total, i / total * 100,
+                                 current_equity=current_equity,
+                                 profit=profit,
+                                 profit_pct=profit_pct,
+                                 equity_point=latest_equity_point,
+                                 recent_trades=recent_trades,
+                                 metrics={
+                                     'total_trades': trades_count,
+                                     'win_rate': win_rate,
+                                     'max_drawdown_pct': self.portfolio.equity_curve[-1].drawdown_pct if self.portfolio.equity_curve else 0
+                                 }
+                             )
+                        else:
+                            progress_callback(
+                                i, total, i / total * 100,
+                                current_equity=current_equity,
+                                profit=profit,
+                                profit_pct=profit_pct,
+                                equity_point=latest_equity_point,
+                                recent_trades=recent_trades,
+                                metrics={
+                                    'total_trades': trades_count,
+                                    'win_rate': win_rate,
+                                    'max_drawdown_pct': self.portfolio.equity_curve[-1].drawdown_pct if self.portfolio.equity_curve else 0
+                                }
+                            )
                     
             except (KeyError, ValueError, IndexError) as e:
                 # 可恢复的数据错误：记录警告并跳过此时间点
