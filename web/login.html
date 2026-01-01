@@ -154,6 +154,24 @@
                 btn.textContent = 'Login';
             }
         }
+
+        // 🤖 Auto-fill for Local Mode
+        (async function checkLocalMode() {
+            try {
+                const res = await fetch('/api/info');
+                const data = await res.json();
+                if (data.deployment_mode === 'local') {
+                    const pwdInput = document.getElementById('password');
+                    if (pwdInput) {
+                        pwdInput.value = 'admin'; // Default local password
+                        // Optional: Auto-focus or highlight
+                        console.log('🏠 Local mode detected: Password auto-filled');
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to check deployment mode:', e);
+            }
+        })();
     </script>
 </body>
 
