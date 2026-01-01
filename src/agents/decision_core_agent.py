@@ -33,18 +33,18 @@ class SignalWeight:
     当前配置: trend(0.45) + oscillator(0.20) + prophet(0.15) = 0.80
     sentiment 使用动态权重 (0.20)
     """
-    # 趋势信号 (合计 0.45)
-    trend_5m: float = 0.10
-    trend_15m: float = 0.15
-    trend_1h: float = 0.20
+    # 趋势信号 (合计 0.35) - OPTIMIZATION (Phase 3): Reduced from 0.45
+    trend_5m: float = 0.05   # Reduced from 0.10
+    trend_15m: float = 0.10  # Reduced from 0.15
+    trend_1h: float = 0.20   # Kept same (Core trend backbone)
     # 震荡信号 (合计 0.20)
     oscillator_5m: float = 0.05
     oscillator_15m: float = 0.07
     oscillator_1h: float = 0.08
     # Prophet ML 预测权重
     prophet: float = 0.15
-    # 情绪信号 (动态权重，有数据时 0.20，无数据时 0)
-    sentiment: float = 0.20
+    # 情绪信号 (动态权重，有数据时 0.30，无数据时 0) - OPTIMIZATION (Phase 3): Increased from 0.20
+    sentiment: float = 0.30
     # 其他扩展信号（如LLM）
     llm_signal: float = 0.0  # 待整合
 

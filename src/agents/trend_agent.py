@@ -186,9 +186,10 @@ Do NOT use markdown formatting. Output plain text only."""
             fuel_status = "WEAK FUEL"
         
         # Determine ADX status
-        if adx > 25:
+        # Determine ADX status
+        if adx > 20:  # OPTIMIZATION (Phase 2): Lowered from 25
             adx_status = "STRONG TREND"
-        elif adx >= 20:
+        elif adx >= 15:  # OPTIMIZATION (Phase 2): Lowered from 20
             adx_status = "MODERATE TREND"
         else:
             adx_status = "WEAK/NO TREND"

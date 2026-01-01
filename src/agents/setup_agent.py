@@ -189,10 +189,10 @@ Do NOT use markdown formatting. Output plain text only."""
             kdj_status = "OVERBOUGHT (J > 80)"
         elif kdj_j < 20:
             kdj_status = "OVERSOLD (J < 20)"
-        elif kdj_j < 40:
-            kdj_status = "PULLBACK ZONE (J < 40)"
-        elif kdj_j > 60:
-            kdj_status = "RALLY ZONE (J > 60)"
+        elif kdj_j < 50:  # OPTIMIZATION (Phase 2): Relaxed from 40
+            kdj_status = "PULLBACK ZONE (J < 50)"
+        elif kdj_j > 50:  # OPTIMIZATION (Phase 2): Relaxed from 60
+            kdj_status = "RALLY ZONE (J > 50)"
         else:
             kdj_status = "NEUTRAL (40 < J < 60)"
         

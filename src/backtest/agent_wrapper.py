@@ -179,10 +179,12 @@ class BacktestAgentRunner:
     
     def __init__(self, config: Dict = None):
         self.config = config or {}
+        
+        # Use production agents for 100% logic parity
+        from src.agents.quant_analyst_agent import QuantAnalystAgent
         # We only need the DecisionCoreAgent (The Critic) to make final decisions
-        # The other agents (Strategist, etc.) are simulated by BacktestSignalCalculator
         self.decision_core = DecisionCoreAgent()
-        self.calculator = BacktestSignalCalculator()
+        self.quant_analyst = QuantAnalystAgent() # Replaces legacy calculator
         
         # Initialize LLM engine if enabled
         if self.config.get('use_llm', False):
@@ -198,8 +200,9 @@ class BacktestAgentRunner:
         Process one backtest step
         """
         try:
-            # 1. Calculate Signals
-            quant_analysis = self.calculator.compute_all_signals(snapshot)
+            # 1. Calculate Signals using REAL QuantAnalystAgent
+            # Use await since analyze_all_timeframes is async
+            quant_analysis = await self.quant_analyst.analyze_all_timeframes(snapshot)
             
             # 2. Make Decision via Critic
             # We mock the PredictResult as None (ML disabled for speed/simplicity in backtest)
@@ -215,7 +218,14 @@ class BacktestAgentRunner:
             )
             
             # 3. LLM Enhancement (if enabled)
-            if self.llm_engine:
+            # OPTIMIZATION: Skip LLM during warmup (when trend scores are 0 due to insufficient data)
+            is_warmup = (
+                quant_analysis.get('trend', {}).get('total_trend_score', 0) == 0 and
+                quant_analysis.get('oscillator', {}).get('total_osc_score', 0) == 0 and
+                len(snapshot.stable_1h) < 60
+            )
+            
+            if self.llm_engine and not is_warmup:
                 # Throttle to avoid rate limits
                 throttle_ms = self.config.get('llm_throttle_ms', 100)
                 if throttle_ms > 0:

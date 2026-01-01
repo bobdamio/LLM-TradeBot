@@ -85,7 +85,7 @@ class TriggerAgent:
             if pattern and pattern != 'None':
                 stance = 'CONFIRMED'
                 status = 'PATTERN_DETECTED'
-            elif volume_breakout or rvol > 1.5:
+            elif volume_breakout or rvol > 1.0:  # OPTIMIZATION (Phase 2): Lowered from 1.5
                 stance = 'VOLUME_SIGNAL'
                 status = 'BREAKOUT'
             else:
@@ -159,9 +159,9 @@ Do NOT use markdown formatting. Output plain text only."""
             pattern_status = "NO PATTERN DETECTED"
         
         # RVOL status
-        if rvol > 2.0:
+        if rvol > 1.8:  # OPTIMIZATION (Phase 2): Lowered from 2.0
             rvol_status = f"VERY HIGH VOLUME ({rvol:.1f}x average)"
-        elif rvol > 1.5:
+        elif rvol > 1.2:  # OPTIMIZATION (Phase 2): Lowered from 1.5
             rvol_status = f"HIGH VOLUME ({rvol:.1f}x average)"
         elif rvol >= 1.0:
             rvol_status = f"NORMAL VOLUME ({rvol:.1f}x average)"

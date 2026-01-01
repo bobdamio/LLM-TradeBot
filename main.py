@@ -692,9 +692,9 @@ class MultiAgentTradingBot:
                 four_layer_result['blocking_reason'] = 'No clear 1h trend (EMA 20/60)'
                 log.info("❌ Layer 1 FAIL: No clear trend")
             # 🆕 ADX Weak Trend Filter - Even if EMA aligned, weak trend is not tradeable
-            elif adx_value < 20:
-                four_layer_result['blocking_reason'] = f"Weak Trend Strength (ADX {adx_value:.0f} < 20)"
-                log.info(f"❌ Layer 1 FAIL: ADX={adx_value:.0f} < 20, trend not strong enough")
+            elif adx_value < 15: # OPTIMIZATION (Phase 2): Lowered from 20
+                four_layer_result['blocking_reason'] = f"Weak Trend Strength (ADX {adx_value:.0f} < 15)"
+                log.info(f"❌ Layer 1 FAIL: ADX={adx_value:.0f} < 15, trend not strong enough")
             elif trend_1h == 'long' and oi_change < -5.0:
                 four_layer_result['blocking_reason'] = f"OI Divergence: Trend UP but OI {oi_change:.1f}%"
                 log.warning(f"🚨 Layer 1 FAIL: OI Divergence - Price up but OI {oi_change:.1f}%")
@@ -779,10 +779,10 @@ class MultiAgentTradingBot:
                                 four_layer_result['blocking_reason'] = f"15m overbought (J={kdj_j:.0f}) - wait for pullback"
                                 log.info(f"⏳ Layer 3 WAIT: Overbought - waiting for pullback")
                             # IDEAL: Pullback position (best entry in uptrend!)
-                            elif close_15m < bb_middle or kdj_j < 40:
+                            elif close_15m < bb_middle or kdj_j < 50: # OPTIMIZATION (Phase 2): Relaxed from 40
                                 setup_ready = True
                                 four_layer_result['setup_quality'] = 'IDEAL'
-                                log.info(f"✅ Layer 3 READY: IDEAL PULLBACK - J={kdj_j:.0f} < 40 or Close < BB_middle")
+                                log.info(f"✅ Layer 3 READY: IDEAL PULLBACK - J={kdj_j:.0f} < 50 or Close < BB_middle")
                             # Acceptable: Neutral/mid-range (not ideal but OK)
                             else:
                                 setup_ready = True  # ✅ Changed from False
@@ -797,7 +797,7 @@ class MultiAgentTradingBot:
                                 four_layer_result['blocking_reason'] = f"15m oversold (J={kdj_j:.0f}) - wait for rally"
                                 log.info(f"⏳ Layer 3 WAIT: Oversold - waiting for rally")
                             # IDEAL: Rally position (best entry in downtrend!)
-                            elif close_15m > bb_middle or kdj_j > 60:
+                            elif close_15m > bb_middle or kdj_j > 50: # OPTIMIZATION (Phase 2): Relaxed from 60
                                 setup_ready = True
                                 four_layer_result['setup_quality'] = 'IDEAL'
                                 log.info(f"✅ Layer 3 READY: IDEAL RALLY - J={kdj_j:.0f} > 60 or Close > BB_middle")
