@@ -119,6 +119,27 @@ Examples:
         help="止盈百分比 (默认: 2.0%%)"
     )
     
+    parser.add_argument(
+        "--strategy-mode",
+        type=str,
+        default="agent",
+        choices=["technical", "agent"],
+        help="策略模式: technical (简单EMA) 或 agent (多Agent框架, 默认: agent)"
+    )
+    
+    parser.add_argument(
+        "--use-llm",
+        action="store_true",
+        help="启用 LLM 增强 (仅在 agent 模式下有效，会产生 API 费用)"
+    )
+    
+    parser.add_argument(
+        "--llm-cache",
+        action="store_true",
+        default=True,
+        help="缓存 LLM 响应以节省费用 (默认: True)"
+    )
+    
     return parser.parse_args()
 
 
@@ -158,6 +179,11 @@ async def main():
     print(f"💰 Symbol: {args.symbol}")
     print(f"💵 Initial Capital: ${args.capital:,.2f}")
     print(f"⏱️ Step: {args.step} ({['', '5min', '', '15min', '', '', '', '', '', '', '', '', '1hour'][args.step]})")
+    print(f"🎯 Strategy Mode: {args.strategy_mode.upper()}")
+    if args.strategy_mode == "agent":
+        print(f"🤖 LLM Enhanced: {'Yes' if args.use_llm else 'No (Quant Only)'}")
+        if args.use_llm:
+            print(f"💾 LLM Cache: {'Enabled' if args.llm_cache else 'Disabled'}")
     print(f"🛡️ Stop Loss: {args.stop_loss}%")
     print(f"🎯 Take Profit: {args.take_profit}%")
     print("=" * 60)
@@ -175,7 +201,10 @@ async def main():
         max_position_size=args.max_position,
         stop_loss_pct=args.stop_loss,
         take_profit_pct=args.take_profit,
-        step=args.step
+        step=args.step,
+        strategy_mode=args.strategy_mode,
+        use_llm=args.use_llm,
+        llm_cache=args.llm_cache
     )
     
     # 创建引擎

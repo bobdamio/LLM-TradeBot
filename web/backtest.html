@@ -2037,14 +2037,20 @@
                 // Scroll to results
                 document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
 
-                // Update metrics display
-                document.getElementById('totalReturn').textContent = h.totalReturn || '-';
-                document.getElementById('annualizedReturn').textContent = '-';
-                document.getElementById('maxDrawdown').textContent = h.maxDrawdown ? `${h.maxDrawdown}%` : '-';
-                document.getElementById('sharpeRatio').textContent = h.sharpeRatio || '-';
-                document.getElementById('winRate').textContent = h.winRate ? `${h.winRate}%` : '-';
-                document.getElementById('totalTrades').textContent = h.trades || '-';
-                document.getElementById('profitFactor').textContent = h.profitFactor || '-';
+                // Safe element update helper
+                const setElementText = (id, value) => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = value;
+                };
+
+                // Update metrics display with safe setter
+                setElementText('totalReturn', h.totalReturn || '-');
+                setElementText('annualizedReturn', '-'); // Optional metric, may not exist in DOM
+                setElementText('maxDrawdown', h.maxDrawdown ? `${h.maxDrawdown}%` : '-');
+                setElementText('sharpeRatio', h.sharpeRatio || '-');
+                setElementText('winRate', h.winRate ? `${h.winRate}%` : '-');
+                setElementText('totalTrades', h.trades || '-');
+                setElementText('profitFactor', h.profitFactor || '-');
 
                 // Update ID display
                 const idEl = document.getElementById('resultIdDisplay');
