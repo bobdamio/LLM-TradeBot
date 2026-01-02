@@ -128,11 +128,12 @@ class DataReplayAgent:
     def _get_cache_path(self) -> str:
         """生成缓存文件路径"""
         start_str = self.start_date.strftime("%Y%m%d")
-        # Use the original end_date for cache file name, not the extended one
-        original_end_date_str = (self.end_date - timedelta(days=1)).strftime("%Y%m%d")
+        end_str = self.end_date.strftime("%Y%m%d")
+        # Include lookback in cache path to ensure invalidation when lookback changes
+        lookback_days = 30  # Must match the value in _fetch_from_api
         return os.path.join(
             self.CACHE_DIR,
-            f"{self.symbol}_{start_str}_{original_end_date_str}.parquet"
+            f"{self.symbol}_{start_str}_{end_str}_lb{lookback_days}.parquet"
         )
     
     async def _fetch_from_api(self):

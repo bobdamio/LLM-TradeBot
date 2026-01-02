@@ -203,8 +203,8 @@ class DecisionCoreAgent:
             scores['trend_5m']
         )
         
-        # 7. 初始决策映射
-        action, base_confidence = self._score_to_action(weighted_score, aligned)
+        # 7. 初始决策映射（传入 regime 以使用动态阈值）
+        action, base_confidence = self._score_to_action(weighted_score, aligned, regime)
         
         # 8. 综合信心度校准与对抗审计
         final_confidence = base_confidence * 100
@@ -301,6 +301,7 @@ class DecisionCoreAgent:
         策略:
         - 三个周期方向一致（同为正或同为负）-> 强对齐
         - 1h和15m一致，5m可反 -> 部分对齐
+        - 1h中性时，检查15m和5m -> 优化：放宽条件
         - 其他 -> 不对齐
         
         Returns:
@@ -320,39 +321,67 @@ class DecisionCoreAgent:
         if signs[0] == signs[1] and signs[0] != 0:
             return True, f"中长周期{('多头' if signs[0] > 0 else '空头')}对齐(1h+15m)"
         
+        # 优化：1h中性时，检查15m和5m是否一致
+        if signs[0] == 0 and signs[1] == signs[2] and signs[1] != 0:
+            return True, f"短周期{('多头' if signs[1] > 0 else '空头')}对齐(15m+5m)，1h中性"
+        
+        # 优化：1h中性但15m有明确方向
+        if signs[0] == 0 and abs(score_15m) > 30:
+            direction = '多头' if signs[1] > 0 else '空头'
+            return True, f"15m强势{direction}信号(得分:{score_15m:.0f})，1h中性"
+        
         # 不对齐
         return False, f"多周期分歧(1h:{signs[0]}, 15m:{signs[1]}, 5m:{signs[2]})"
     
     def _score_to_action(
         self, 
         weighted_score: float, 
-        aligned: bool
+        aligned: bool,
+        regime: Dict = None
     ) -> Tuple[str, float]:
         """
         将加权得分映射为交易动作
         
         策略:
         - 得分>50 且 对齐 -> long (high confidence)
-        - 得分>30 -> long (medium confidence)
+        - 得分>阈值 -> long (medium confidence)
         - 得分<-50 且 对齐 -> short (high confidence)
-        - 得分<-30 -> short (medium confidence)
+        - 得分<-阈值 -> short (medium confidence)
         - 其他 -> hold
+        
+        优化: 根据市场状态动态调整阈值
         
         Returns:
             (action, confidence)
         """
+        # 动态阈值：根据市场状态调整
+        base_threshold = 30
+        if regime:
+            regime_type = regime.get('regime', '')
+            if regime_type in ['VOLATILE_DIRECTIONLESS', 'choppy']:
+                # 波动无方向市场：降低阈值增加交易机会
+                base_threshold = 20
+            elif regime_type in ['TRENDING', 'TRENDING_UP', 'TRENDING_DOWN']:
+                # 趋势市场：标准阈值
+                base_threshold = 30
+            elif regime_type in ['VOLATILE_TRENDING']:
+                # 波动趋势：略微降低
+                base_threshold = 25
+        
+        high_threshold = base_threshold + 20  # 强信号阈值
+        
         # 强信号阈值（需要多周期对齐）
-        if weighted_score > 50 and aligned:
+        if weighted_score > high_threshold and aligned:
             return 'long', 0.85
-        if weighted_score < -50 and aligned:
+        if weighted_score < -high_threshold and aligned:
             return 'short', 0.85
         
         # 中等信号阈值
-        if weighted_score > 30:
-            confidence = 0.6 + (weighted_score - 30) * 0.01  # 线性递增
+        if weighted_score > base_threshold:
+            confidence = 0.6 + (weighted_score - base_threshold) * 0.01
             return 'long', min(confidence, 0.75)
-        if weighted_score < -30:
-            confidence = 0.6 + (abs(weighted_score) - 30) * 0.01
+        if weighted_score < -base_threshold:
+            confidence = 0.6 + (abs(weighted_score) - base_threshold) * 0.01
             return 'short', min(confidence, 0.75)
         
         # 弱信号或冲突 -> 观望
