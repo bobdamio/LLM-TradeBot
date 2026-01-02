@@ -367,7 +367,11 @@ class DataReplayAgent:
             funding_rates=funding_rates
         )
         
-        self.timestamps = self.data_cache.df_5m.index.tolist()
+        self.timestamps = [ts for ts in self.data_cache.df_5m.index.tolist() if self.start_date <= ts < self.end_date]
+        
+        log.info(f"   Date comparison: start_date={self.start_date}, end_date={self.end_date}")
+        log.info(f"   Cached range: {self.data_cache.df_5m.index[0]} to {self.data_cache.df_5m.index[-1]}")
+        log.info(f"   Backtest timestamps: {len(self.timestamps)}")
     
     def get_snapshot_at(self, timestamp: datetime, lookback: int = 1000) -> MarketSnapshot:
         """
