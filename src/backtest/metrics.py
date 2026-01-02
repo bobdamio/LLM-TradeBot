@@ -65,7 +65,7 @@ class MetricsResult:
         return {
             # 收益指标
             'total_return': f"{self.total_return:.2f}%",
-            'annualized_return': f"{self.annualized_return:.2f}%",
+            # 'annualized_return': f"{self.annualized_return:.2f}%",  # Removed: misleading for short backtests
             'max_drawdown': f"${self.max_drawdown:.2f}",
             'max_drawdown_pct': f"{self.max_drawdown_pct:.2f}%",
             'max_drawdown_duration': f"{self.max_drawdown_duration} days",
@@ -144,9 +144,9 @@ class PerformanceMetrics:
         # 计算最大回撤
         max_dd, max_dd_pct, max_dd_duration = cls._calculate_max_drawdown(equity_curve)
         
-        # 计算风险指标
+        # 计算风险指标 (使用总收益率而非年化收益率)
         sharpe, sortino, calmar, volatility = cls._calculate_risk_metrics(
-            equity_curve, annualized_return, max_dd_pct
+            equity_curve, total_return, max_dd_pct  # Changed: use total_return
         )
         
         # 计算交易统计
@@ -270,7 +270,7 @@ class PerformanceMetrics:
     def _calculate_risk_metrics(
         cls,
         equity_curve: pd.DataFrame,
-        annualized_return: float,
+        total_return: float,  # Changed from annualized_return
         max_dd_pct: float
     ) -> Tuple[float, float, float, float]:
         """计算风险指标"""
@@ -284,25 +284,30 @@ class PerformanceMetrics:
         if daily_returns.empty:
             return 0.0, 0.0, 0.0, 0.0
         
-        # 年化波动率
-        volatility = daily_returns.std() * np.sqrt(cls.TRADING_DAYS_PER_YEAR) * 100
+        # 计算回测期间的波动率 (不年化)
+        volatility = daily_returns.std() * 100
         
-        # 夏普比率
-        excess_return = annualized_return - cls.RISK_FREE_RATE * 100
-        sharpe = excess_return / volatility if volatility > 0 else 0.0
+        # 夏普比率 (使用总收益率,不年化)
+        # 对于短期回测,使用总收益率更合理
+        risk_free_return = cls.RISK_FREE_RATE * len(daily_returns) / cls.TRADING_DAYS_PER_YEAR * 100
+        excess_return = total_return - risk_free_return
+        sharpe = excess_return / (volatility * np.sqrt(len(daily_returns))) if volatility > 0 else 0.0
         
         # 索提诺比率（只考虑下行波动）
         negative_returns = daily_returns[daily_returns < 0]
         if len(negative_returns) > 0:
-            downside_std = negative_returns.std() * np.sqrt(cls.TRADING_DAYS_PER_YEAR) * 100
-            sortino = excess_return / downside_std if downside_std > 0 else 0.0
+            downside_std = negative_returns.std() * 100
+            sortino = excess_return / (downside_std * np.sqrt(len(daily_returns))) if downside_std > 0 else 0.0
         else:
             sortino = 0.0
         
-        # 卡尔玛比率
-        calmar = annualized_return / max_dd_pct if max_dd_pct > 0 else 0.0
+        # 卡尔玛比率 (使用总收益率)
+        calmar = total_return / max_dd_pct if max_dd_pct > 0 else 0.0
         
-        return sharpe, sortino, calmar, volatility
+        # 年化波动率 (仅用于显示)
+        annualized_volatility = daily_returns.std() * np.sqrt(cls.TRADING_DAYS_PER_YEAR) * 100
+        
+        return sharpe, sortino, calmar, annualized_volatility
     
     @classmethod
     def _calculate_trade_stats(cls, trades: List[Trade]) -> Dict:

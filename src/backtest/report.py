@@ -275,12 +275,7 @@ class BacktestReport:
                         {metrics.total_return:+.2f}%
                     </span>
                 </div>
-                <div class="metric">
-                    <span class="metric-label">年化收益</span>
-                    <span class="metric-value {'positive' if metrics.annualized_return >= 0 else 'negative'}">
-                        {metrics.annualized_return:+.2f}%
-                    </span>
-                </div>
+                <!-- Removed: Annualized Return (misleading for short backtests) -->
                 <div class="metric">
                     <span class="metric-label">最大回撤</span>
                     <span class="metric-value negative">{metrics.max_drawdown_pct:.2f}%</span>
