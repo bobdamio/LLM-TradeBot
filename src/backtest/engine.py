@@ -505,14 +505,24 @@ class BacktestEngine:
             return
 
         # Basic Action Filtering
-        if action == 'close' and has_position:
-            # 平仓
+        if action in ['close', 'close_short', 'close_long'] and has_position:
+            # 平仓 (Close Position)
+            # Validate direction matches if specified (close_short for SHORT, close_long for LONG)
+            current_side = self.portfolio.positions[symbol].side
+            if action == 'close_short' and current_side != Side.SHORT:
+                log.warning(f"⚠️ close_short signal but position is {current_side}, ignoring")
+                return
+            if action == 'close_long' and current_side != Side.LONG:
+                log.warning(f"⚠️ close_long signal but position is {current_side}, ignoring")
+                return
+            
             self.portfolio.close_position(
                 symbol=symbol,
                 price=current_price,
                 timestamp=timestamp,
                 reason='signal'
             )
+            log.info(f"✅ Closed {current_side.value} position via {action} signal")
             return
 
         if action in ['long', 'short']:
