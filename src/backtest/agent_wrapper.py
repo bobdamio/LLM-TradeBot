@@ -90,18 +90,18 @@ class BacktestSignalCalculator:
         score = 0
         details = {'ema_status': 'neutral'}
         
-        # Basic EMA Alignment
+        # Basic EMA Alignment - Amplified bearish for SHORT enablement
         if curr_close > curr_ema20 > curr_ema60:
             score = 60
             details['ema_status'] = 'bullish_alignment'
         elif curr_close < curr_ema20 < curr_ema60:
-            score = -60
+            score = -70  # Was -60, now stronger to enable more SHORT trades
             details['ema_status'] = 'bearish_alignment'
         elif curr_close > curr_ema20 and curr_ema20 < curr_ema60:
              score = 20 # Potential reversal up
              details['ema_status'] = 'potential_reversal_up'
         elif curr_close < curr_ema20 and curr_ema20 > curr_ema60:
-             score = -20 # Potential reversal down
+             score = -25 # Potential reversal down (was -20)
              details['ema_status'] = 'potential_reversal_down'
              
         return {'score': score, 'signal': 'long' if score > 0 else 'short', 'details': details}
@@ -406,16 +406,30 @@ class BacktestAgentRunner:
             log.info(f"🎯 LLM override: {llm_decision.action} (confidence: {llm_decision.confidence}%)")
             return llm_decision
         else:
+            # NEW: Boost confidence when LLM yields but quant signals are strong
+            # This addresses the issue where LLM outputs 0% causing missed opportunities
+            boosted_vote = quant_vote
+            if quant_vote.weighted_score and abs(quant_vote.weighted_score) >= 10:
+                # Strong quant signal, apply minimum confidence of 65%
+                min_confidence = 65
+                if quant_vote.confidence < min_confidence:
+                    log.info(f"⚡ Confidence boost: {quant_vote.confidence}% -> {min_confidence}% (strong quant score: {quant_vote.weighted_score})")
+                    try:
+                        boosted_vote = replace(quant_vote, confidence=min_confidence)
+                    except:
+                        quant_vote.confidence = min_confidence
+                        boosted_vote = quant_vote
+            
             # Enhance quant decision with LLM reasoning
-            enhanced_reason = f"{quant_vote.reason} | LLM: {llm_decision.reason}"
+            enhanced_reason = f"{boosted_vote.reason} | LLM: {llm_decision.reason}"
             
             # Create a new VoteResult with enhanced reasoning
             try:
-                enhanced_vote = replace(quant_vote, reason=enhanced_reason)
+                enhanced_vote = replace(boosted_vote, reason=enhanced_reason)
             except:
                 # Fallback if replace doesn't work
-                quant_vote.reason = enhanced_reason
-                enhanced_vote = quant_vote
+                boosted_vote.reason = enhanced_reason
+                enhanced_vote = boosted_vote
             
             log.info(f"✨ Enhanced decision: {enhanced_vote.action} with LLM reasoning")
             return enhanced_vote

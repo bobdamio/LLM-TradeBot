@@ -47,9 +47,10 @@ You will receive:
 - Confidence: 85-95%
 
 **VOLATILE_DIRECTIONLESS** (ADX < 25, conflicting signals):
-- ⚠️ REDUCE threshold to **±8**
-- Only trade if Bull/Bear spread > 20% (clear winner)
-- Confidence: 70-85%
+- ⚠️ REDUCE threshold to **±5** (was ±8, now more aggressive)
+- Only trade if Bull/Bear spread > 15% (was 20%, allowing more trades)
+- **CRITICAL**: If 15m+1h BOTH show same direction (±60), TRUST the trend even without ADX confirmation
+- Confidence: 65-85%
 
 **CHOPPY** (Low ADX + range-bound):
 - 🚫 **DO NOT TRADE** unless extreme setup
@@ -59,11 +60,12 @@ You will receive:
 ### Priority 2: Trading Frequency Discipline (OPTIMIZED)
 
 **Quality Over Quantity**:
-- Target: 2-4 high-quality trades per 12-24 periods (volatile markets allow more)
-- 🚫 RED FLAG: Trading every 2-3 periods → Standards too low, likely chasing noise
-- 🚫 RED FLAG: Holding time < 2 periods → Too impulsive, not letting trades develop
+- Target: 3-6 high-quality trades per 24 periods (was 2-4, now more active)
+- 🚫 RED FLAG: Trading every 1-2 periods → Standards too low, likely chasing noise
+- 🚫 RED FLAG: Holding time < 3 periods → Too impulsive, not letting trades develop (was 2)
 - 🚫 RED FLAG: Holding time > 12 periods with negative PnL → Cut loss immediately
 - 🚫 RED FLAG: Just closed and immediately re-entering same direction → Emotional trading
+- ✅ GOOD: Minimum hold time of 3h unless SL/TP triggered (NEW)
 
 **Self-Check Before Opening** (Mental Checklist):
 1. Is this a **multi-signal resonance** setup? (Trend + Oscillator + Regime aligned)
@@ -75,13 +77,18 @@ You will receive:
 ### Priority 3: Entry Filters (Signal Hygiene - NEW)
 
 **Oscillator Guard (Prevent Buying Top / Selling Bottom):**
-- 🛑 **BLOCK SHORT** if RSI < 30 (Oversold)
-  - *Exception:* Allow if ADX > 45 (Strong Crash) or News Panic
-  - *Action:* If signal says Short but RSI < 30 → Convert to `wait`
+- 🛑 **BLOCK SHORT** if RSI < 25 (Oversold, was 30 - now more permissive for shorts)
+  - *Exception:* Allow if ADX > 40 (Strong Crash) or News Panic
+  - *Action:* If signal says Short but RSI < 25 → Convert to `wait`
   
-- 🛑 **BLOCK LONG** if RSI > 70 (Overbought)
-  - *Exception:* Allow if ADX > 45 (Parabolic Run)
-  - *Action:* If signal says Long but RSI > 70 → Convert to `wait`
+- 🛑 **BLOCK LONG** if RSI > 75 (Overbought, was 70 - now more permissive for longs)
+  - *Exception:* Allow if ADX > 40 (Parabolic Run)
+  - *Action:* If signal says Long but RSI > 75 → Convert to `wait`
+
+**SHORT Trade Enablement (NEW - Address zero SHORT issue):**
+- In VOLATILE markets, actively seek SHORT when weighted score < -5
+- Do NOT default to LONG just because trend is unclear
+- Bear agent with 55%+ confidence should trigger SHORT consideration
 
 ### Priority 4: Handling Conflicting Signals (Mean Reversion Strategy)
 
@@ -117,9 +124,9 @@ You will receive:
 
 | Regime | Long Threshold | Short Threshold | Confidence |
 |--------|---------------|-----------------|------------|
-| TRENDING | > +15 | < -15 | 85-95% |
-| VOLATILE | > +5 | < -5 | 70-85% |
-| CHOPPY | > +20 | < -20 | 60-75% |
+| TRENDING | > +12 | < -12 | 80-95% |
+| VOLATILE | > +5 | < -5 | 65-85% |
+| CHOPPY | > +15 | < -15 | 55-75% |
 
 ### Priority 7: Bull/Bear Resonance
 
@@ -254,9 +261,9 @@ You will receive:
 
 ### Confidence Guidelines
 - 90-95%: Perfect setup (aligned, strong regime, clear resonance)
-- 80-89%: Good setup (most criteria met)
-- 70-79%: Acceptable setup (threshold met but some conflicts)
-- < 70%: Weak setup → convert to `wait`
+- 75-89%: Good setup (most criteria met)
+- 65-74%: Acceptable setup (threshold met but some conflicts)
+- < 60%: Weak setup → convert to `wait` (was <70%, now more permissive)
 
 ---
 
