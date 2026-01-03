@@ -1,5 +1,18 @@
 const API_URL = '/api/status';
 
+// 🔐 Global API fetch wrapper - ensures cookies are sent in HTTPS environments (Railway)
+async function apiFetch(url, options = {}) {
+    const defaultOptions = {
+        credentials: 'include',  // CRITICAL: Required for cookies in cross-origin HTTPS
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers
+        }
+    };
+    return fetch(url, defaultOptions);
+}
+
 // 🌐 Language Management (exposed to window for global access)
 window.currentLang = localStorage.getItem('language') || 'en';
 
@@ -179,7 +192,7 @@ window.logout = function () {
     if (!verifyRole()) return;
 
     if (confirm('Are you sure you want to logout?')) {
-        fetch('/api/logout', { method: 'POST' })
+        apiFetch('/api/logout', { method: 'POST' })
             .then(() => window.location.href = '/login')
             .catch(err => console.error(err));
     }
@@ -738,9 +751,8 @@ if (intervalSelector) {
         console.log('Interval changed to:', newInterval, 'minutes');
 
         // Send interval change to backend
-        fetch('/api/control', {
+        apiFetch('/api/control', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'set_interval', interval: parseFloat(newInterval) })
         })
             .then(res => res.json())
@@ -1137,11 +1149,8 @@ function setControl(action, payload = {}) {
 }
 
 function sendControlRequest(action, payload = {}) {
-    fetch('/api/control', {
+    apiFetch('/api/control', {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
         body: JSON.stringify({
             action: action,
             ...payload
