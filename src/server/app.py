@@ -246,12 +246,12 @@ async def control_bot(cmd: ControlCommand, authenticated: bool = Depends(verify_
         global_state.add_log("⏹️ System Stopped by User")
 
     elif action == "set_interval":
-        if cmd.interval and cmd.interval in [0.5, 1, 3, 5]:
+        if cmd.interval and cmd.interval in [0.5, 1, 3, 5, 15, 30, 60]:
             global_state.cycle_interval = cmd.interval
             global_state.add_log(f"⏱️ Cycle interval updated to {cmd.interval} minutes")
             return {"status": "success", "interval": cmd.interval}
         else:
-            raise HTTPException(status_code=400, detail="Invalid interval. Must be 0.5, 1, 3, or 5 minutes.")
+            raise HTTPException(status_code=400, detail="Invalid interval. Must be 0.5, 1, 3, 5, 15, 30, or 60 minutes.")
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
     
