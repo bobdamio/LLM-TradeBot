@@ -2438,7 +2438,7 @@ def main():
     parser.add_argument('--leverage', type=int, default=1, help='杠杆倍数')
     parser.add_argument('--stop-loss', type=float, default=1.0, help='止损百分比')
     parser.add_argument('--take-profit', type=float, default=2.0, help='止盈百分比')
-    parser.add_argument('--mode', choices=['once', 'continuous'], default='once', help='运行模式')
+    parser.add_argument('--mode', choices=['once', 'continuous'], default='continuous', help='运行模式')
     parser.add_argument('--interval', type=float, default=3.0, help='持续运行间隔（分钟）')
     
     args = parser.parse_args()

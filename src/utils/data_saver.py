@@ -566,14 +566,31 @@ class DataSaver:
         except Exception as e:
             log.error(f"保存标准化交易记录失败: {e}")
 
-    def get_recent_trades(self, limit: int = 10) -> List[Dict]:
-        """获取最近的交易记录"""
+    def get_recent_trades(self, limit: int = 10, days: int = 3) -> List[Dict]:
+        """获取最近的交易记录
+        
+        Args:
+            limit: 返回的最大记录数（默认10条）
+            days: 只返回最近N天内的记录（默认3天）
+        """
         try:
             file_path = os.path.join(self.dirs.get('trades'), 'all_trades.csv')
             if not os.path.exists(file_path):
                 return []
             
             df = pd.read_csv(file_path)
+            if df.empty:
+                return []
+            
+            # 时间过滤: 只保留最近 N 天内的数据
+            if 'record_time' in df.columns:
+                df['record_time'] = pd.to_datetime(df['record_time'], errors='coerce')
+                cutoff_time = datetime.now() - pd.Timedelta(days=days)
+                df = df[df['record_time'] >= cutoff_time]
+            
+            if df.empty:
+                return []
+            
             # 获取最后N条并按时间反序（或者保持原序由展示层决定）
             recent = df.tail(limit).to_dict('records')
             return recent
