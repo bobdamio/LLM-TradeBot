@@ -18,9 +18,8 @@ from typing import Dict
 from dataclasses import asdict
 
 from src.agents.data_sync_agent import MarketSnapshot
-# from src.agents.timeframe_analyzer import TimeframeAnalyzer, TimeframeAnalysis  # Not needed - using real 1h/15m data
 from src.utils.logger import log
-from src.utils.oi_tracker import oi_tracker
+from src.agents.regime_detector import RegimeDetector
 
 
 class QuantAnalystAgent:
@@ -33,6 +32,7 @@ class QuantAnalystAgent:
     
     def __init__(self):
         """初始化量化策略师"""
+        self.regime_detector = RegimeDetector()
         log.info("👨‍🔬 The Strategist (QuantAnalyst Agent) initialized - Full Analysis Mode")
         
     @staticmethod
@@ -55,7 +55,6 @@ class QuantAnalystAgent:
         rsv = 100 * (close - low_min) / (high_max - low_min)
         k = rsv.ewm(alpha=1/m1, adjust=False).mean()
         d = k.ewm(alpha=1/m2, adjust=False).mean()
-        j = 3 * k - 2 * d
         j = 3 * k - 2 * d
         return k, d, j
 
@@ -83,7 +82,6 @@ class QuantAnalystAgent:
         score = 0
         details = {'ema_status': 'neutral'}
         
-        # Basic EMA Alignment
         if curr_close > curr_ema20 > curr_ema60:
             score = 60
             details['ema_status'] = 'bullish_alignment'
@@ -108,24 +106,20 @@ class QuantAnalystAgent:
         high = df['high']
         low = df['low']
         
-        # RSI
         rsi = self.calculate_rsi(close, 14)
         curr_rsi = rsi.iloc[-1]
         
-        # KDJ
         k, d, j = self.calculate_kdj(high, low, close)
         curr_j = j.iloc[-1]
         
         score = 0
         details = {'rsi_value': round(curr_rsi, 1), 'kdj_j': round(curr_j, 1)}
         
-        # RSI Logic
         if curr_rsi < 30:
             score += 40 # Oversold -> Bullish
         elif curr_rsi > 70:
             score -= 40 # Overbought -> Bearish
             
-        # KDJ Logic
         if curr_j < 20:
              score += 30
         elif curr_j > 80:
@@ -136,12 +130,6 @@ class QuantAnalystAgent:
     async def analyze_all_timeframes(self, snapshot: MarketSnapshot) -> Dict:
         """
         执行完整技术分析
-        
-        Args:
-            snapshot: 市场快照
-            
-        Returns:
-            分析结果字典，包含趋势、震荡、情绪等完整维度
         """
         # 1. 情绪分析
         sentiment = self._analyze_sentiment(snapshot)
@@ -156,27 +144,29 @@ class QuantAnalystAgent:
         o_15m = self.analyze_oscillator(snapshot.stable_15m)
         o_1h = self.analyze_oscillator(snapshot.stable_1h)
         
-        # 3.5 Volatility Analysis (ATR)
+        # 4. Volatility Analysis (ATR)
         volatility = {'atr_1h': 0.0, 'atr_15m': 0.0, 'atr_5m': 0.0}
-        
         for p, df in [('1h', snapshot.stable_1h), ('15m', snapshot.stable_15m), ('5m', snapshot.stable_5m)]:
              if df is not None and len(df) > 20:
                  atr = self.calculate_atr(df['high'], df['low'], df['close']).iloc[-1]
                  volatility[f'atr_{p}'] = round(atr, 4)
         
-        # 4. 计算综合得分 (简单平均)
+        # 5. 计算综合得分
         total_trend_score = (t_5m['score'] + t_15m['score'] + t_1h['score']) / 3
         total_osc_score = (o_5m['score'] + o_15m['score'] + o_1h['score']) / 3
+        
+        # 6. 市场体制检测 (Using 1h for backbone regime)
+        regime = self.regime_detector.detect_regime(snapshot.stable_1h) if snapshot.stable_1h is not None else {}
         
         result = {
             'sentiment': sentiment,
             'volatility': volatility,
+            'regime': regime,
             # 保留空的占位符以兼容
             'timeframe_6h': {}, 
             'timeframe_2h': {},
             'timeframe_30m': {},
             
-            # 完整的技术信号
             'trend': {
                 'trend_5m_score': t_5m['score'],
                 'trend_15m_score': t_15m['score'],
@@ -201,104 +191,51 @@ class QuantAnalystAgent:
         return result
     
     def analyze(self, snapshot: MarketSnapshot) -> Dict:
-        """
-        [Legacy] 执行多时间周期技术分析
-        This method is kept for backward compatibility but redirects to analyze_all_timeframes logic partially
-        """
-        # For legacy callers, we might need a different return structure or just point them to new logic
-        # But for now, let's keep it minimally functional or raise deprecation warning
-        # Since analyze_all_timeframes is the primary entry point now
-        return {} # Placeholder
+        return {}
 
     def _analyze_sentiment(self, snapshot: MarketSnapshot) -> Dict:
-        """
-        分析市场情绪 (Modified: Use Volume as OI Proxy)
-        
-        基于：
-        - 资金费率 (Funding Rate)
-        - 成交量变化 (Volume Change as Proxy for OI)
-        """
         details = {}
-        # q_data = getattr(snapshot, 'quant_data', {})
         b_funding = getattr(snapshot, 'binance_funding', {})
-        # b_oi = getattr(snapshot, 'binance_oi', {}) # Disabled
-        
         has_data = False
         score = 0
         
-        # 1. 资金费率分析
         if b_funding and 'funding_rate' in b_funding:
             has_data = True
             funding_rate = float(b_funding['funding_rate']) * 100
             details['funding_rate'] = funding_rate
-            
-            if funding_rate > 0.05:
-                score -= 30
-                details['funding_signal'] = "极度贪婪（高资金费率）"
-            elif funding_rate > 0.01:
-                score -= 15
-                details['funding_signal'] = "贪婪"
-            elif funding_rate < -0.05:
-                score += 30
-                details['funding_signal'] = "极度恐惧（负资金费率）"
-            elif funding_rate < -0.01:
-                score += 15
-                details['funding_signal'] = "恐惧"
-            else:
-                details['funding_signal'] = "中性"
-        
-        # 2. Volume Fuel Proxy (Replacing OI)
-        # Use 1h Volume Change as a proxy for "Fuel"
-        # Logic: High relative volume = High fuel/interest
+            if funding_rate > 0.05: score -= 30
+            elif funding_rate > 0.01: score -= 15
+            elif funding_rate < -0.05: score += 30
+            elif funding_rate < -0.01: score += 15
         
         vol_change_pct = 0.0
         fuel_signal = "neutral"
-        
         df_1h = snapshot.stable_1h
         if df_1h is not None and len(df_1h) >= 24:
             has_data = True
-            # Calculate average volume of last 24 hours
             current_vol = df_1h['volume'].iloc[-1]
             avg_vol = df_1h['volume'].iloc[-25:-1].mean()
-            
             if avg_vol > 0:
                 vol_ratio = current_vol / avg_vol
-                # Convert ratio to percentage change for compatibility: 1.5x -> +50%
-                vol_change_pct = (vol_ratio - 1) * 100
-                # 🔧 FIX C1: Clamp extreme values to prevent display issues
-                vol_change_pct = max(min(vol_change_pct, 200), -100)
-            else:
-                vol_change_pct = 0
+                vol_change_pct = max(min((vol_ratio - 1) * 100, 200), -100)
             
-            details['oi_change_24h_pct'] = vol_change_pct # Map to existing field
-            details['is_volume_proxy'] = True
-            
-            if vol_change_pct > 50: # > 1.5x volume
+            details['oi_change_24h_pct'] = vol_change_pct
+            if vol_change_pct > 50:
                 score += 20
                 fuel_signal = "strong"
-                details['oi_signal'] = f"High Volume (1.5x avg)"
-            elif vol_change_pct > 20: # > 1.2x volume
+            elif vol_change_pct > 20:
                 score += 10
                 fuel_signal = "moderate"
-                details['oi_signal'] = f"Elevated Volume (1.2x avg)"
-            elif vol_change_pct < -50: # < 0.5x volume
+            elif vol_change_pct < -50:
                 score -= 10
-                fuel_signal = "weak" 
-                details['oi_signal'] = f"Low Volume (0.5x avg)"
-            else:
-                details['oi_signal'] = "Normal Volume"
-        else:
-            details['oi_signal'] = "Insufficient Data for Vol"
-
-        # 🔥 Construct Proxy OI Fuel
+                fuel_signal = "weak"
+        
         oi_fuel = {
             'oi_change_24h': vol_change_pct,
             'fuel_signal': fuel_signal,
             'fuel_score': min(100, max(-100, int(vol_change_pct))),
-            'whale_trap_risk': False, # Volume proxy doesn't detect whale traps easily
+            'whale_trap_risk': False,
             'fuel_strength': fuel_signal, 
-            'divergence_alert': False,
-            'data_error': False,
             'is_proxy': True
         }
         

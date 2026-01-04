@@ -1887,18 +1887,7 @@ class MultiAgentTradingBot:
             return False
     
     
-    def _build_market_context(self, quant_analysis: Dict, predict_result, market_data: Dict) -> str:
-        """
-        构建 DeepSeek LLM 所需的市场上下文文本
-        """
-        # 提取关键数据
-        current_price = market_data['current_price']
-        
-    # ... existing code ...
-    from src.utils.semantic_converter import SemanticConverter
     
-    # Note: _format_choppy_analysis was removed as Market Regime analysis 
-    # is now handled by TREND agent and included in trend_analysis above.
 
     def _build_market_context(self, quant_analysis: Dict, predict_result, market_data: Dict, regime_info: Dict = None, position_info: Dict = None) -> str:
         """
@@ -1942,22 +1931,22 @@ class MultiAgentTradingBot:
         t_15m_sem = SemanticConverter.get_trend_semantic(t_15m_score)
         t_5m_sem = SemanticConverter.get_trend_semantic(t_5m_score)
         
-        o_score_total = oscillator.get('total_oscillator_score')
+        o_score_total = oscillator.get('total_osc_score')
         o_semantic = SemanticConverter.get_oscillator_semantic(o_score_total)
         
         s_score_total = sentiment.get('total_sentiment_score')
         s_semantic = SemanticConverter.get_sentiment_score_semantic(s_score_total)
 
-        rsi_15m = oscillator.get('rsi_15m')
-        rsi_1h = oscillator.get('rsi_1h')
-        rsi_1m_semantic = SemanticConverter.get_rsi_semantic(rsi_15m)
+        rsi_15m = oscillator.get('oscillator_15m', {}).get('details', {}).get('rsi_value')
+        rsi_1h = oscillator.get('oscillator_1h', {}).get('details', {}).get('rsi_value')
+        rsi_15m_semantic = SemanticConverter.get_rsi_semantic(rsi_15m)
         rsi_1h_semantic = SemanticConverter.get_rsi_semantic(rsi_1h)
         
         # MACD
         macd_15m = trend.get('details', {}).get('15m_macd_diff')
         macd_semantic = SemanticConverter.get_macd_semantic(macd_15m)
         
-        oi_change = sentiment.get('oi_change_24h_pct')
+        oi_change = sentiment.get('oi_change_24h_pct', 0)
         oi_semantic = SemanticConverter.get_oi_change_semantic(oi_change)
         
         # 市场状态与价格位置
