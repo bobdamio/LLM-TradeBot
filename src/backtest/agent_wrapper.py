@@ -290,8 +290,26 @@ class BacktestAgentRunner:
                 'osc_15m_score': osc_data.get('osc_15m_score', 0),
                 'osc_5m_score': osc_data.get('osc_5m_score', 0)
             }
+            trend_data = quant_analysis.get('trend', {})
+            trend_scores = {
+                'trend_1h_score': trend_data.get('trend_1h_score', 0),
+                'trend_15m_score': trend_data.get('trend_15m_score', 0),
+                'trend_5m_score': trend_data.get('trend_5m_score', 0)
+            }
             regime_info = getattr(final_decision, 'regime', None) or getattr(vote_result, 'regime', None)
             position_info = getattr(final_decision, 'position', None) or getattr(vote_result, 'position', None)
+            atr_pct = None
+            df_15m = snapshot.stable_15m
+            if df_15m is not None and len(df_15m) > 20:
+                try:
+                    atr = self.quant_analyst.calculate_atr(
+                        df_15m['high'], df_15m['low'], df_15m['close']
+                    ).iloc[-1]
+                    close = df_15m['close'].iloc[-1]
+                    if close:
+                        atr_pct = float(atr / close * 100)
+                except Exception:
+                    atr_pct = None
 
             # 4. Format result
             return {
@@ -304,7 +322,9 @@ class BacktestAgentRunner:
                 'trade_params': getattr(final_decision, 'trade_params', None),
                 'regime': regime_info,
                 'position': position_info,
-                'oscillator_scores': osc_scores
+                'oscillator_scores': osc_scores,
+                'trend_scores': trend_scores,
+                'atr_pct': atr_pct
             }
             
         except Exception as e:

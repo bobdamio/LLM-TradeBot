@@ -174,8 +174,8 @@ class RiskAuditAgent:
             if is_long and pos_pct > 70:
                 return self._block_decision('total_blocks', f"做多位置过高({pos_pct:.1f}%)，存在回调风险")
             
-            if is_short and pos_pct < 30:
-                return self._block_decision('total_blocks', f"做空位置过低({pos_pct:.1f}%)，存在反弹风险")
+            if is_short and pos_pct < 70:
+                return self._block_decision('total_blocks', f"做空位置偏低({pos_pct:.1f}%)，避免在非阻力区做空")
 
         # 0.5 震荡指标冲突拦截 (Overbought/Oversold Guard)
         osc_scores = decision.get('oscillator_scores') or decision.get('oscillator') or {}
@@ -192,6 +192,24 @@ class RiskAuditAgent:
                 return self._block_decision('total_blocks', f"震荡指标强烈超买({osc_min:.0f})，避免追高做多")
             if is_short and osc_max >= 40:
                 return self._block_decision('total_blocks', f"震荡指标强烈超卖({osc_max:.0f})，避免追低做空")
+            if is_short and osc_min > -20:
+                return self._block_decision('total_blocks', f"空头缺乏超买信号(最弱:{osc_min:+.0f})，避免弱势做空")
+
+        # 0.6 空头趋势强度过滤 (Backtest 优化: 空头全败 -> 提高门槛)
+        trend_scores = decision.get('trend_scores') or {}
+        t_1h = trend_scores.get('trend_1h_score')
+        t_15m = trend_scores.get('trend_15m_score')
+        if is_short:
+            # 若缺少趋势分数，则跳过此规则
+            if isinstance(t_1h, (int, float)) and t_1h > -60:
+                return self._block_decision('total_blocks', f"空头趋势不足(1h={t_1h:+.0f})，避免逆势做空")
+            if isinstance(t_15m, (int, float)) and t_15m > -40:
+                return self._block_decision('total_blocks', f"空头趋势不足(15m={t_15m:+.0f})，避免逆势做空")
+            # Regime 反向过滤 (仅在可识别趋势时启用)
+            regime = decision.get('regime') or {}
+            regime_name = str(regime.get('regime', '')).lower()
+            if regime_name in ['trending_up'] or 'uptrend' in regime_name:
+                return self._block_decision('total_blocks', f"趋势向上({regime.get('regime')}), 禁止逆势做空")
 
         # 0.4 盈亏比硬核检查 (R/R Ratio)
         entry_price = decision.get('entry_price', current_price)

@@ -607,7 +607,8 @@ class BacktestEngine:
                 'confidence': confidence,
                 'regime': decision.get('regime'),
                 'position': decision.get('position'),
-                'oscillator_scores': osc_scores
+                'oscillator_scores': osc_scores,
+                'trend_scores': decision.get('trend_scores')
             }
 
             audit_result = await self.risk_audit.audit_decision(
@@ -615,7 +616,7 @@ class BacktestEngine:
                 current_position=current_position,
                 account_balance=available_cash,
                 current_price=current_price,
-                atr_pct=None
+                atr_pct=decision.get('atr_pct')
             )
 
             if not audit_result.passed:

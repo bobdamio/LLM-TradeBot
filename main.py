@@ -1311,6 +1311,12 @@ class MultiAgentTradingBot:
                 'osc_15m_score': osc_data.get('osc_15m_score', 0),
                 'osc_5m_score': osc_data.get('osc_5m_score', 0)
             }
+            trend_data = quant_analysis.get('trend', {}) if isinstance(quant_analysis, dict) else {}
+            order_params['trend_scores'] = {
+                'trend_1h_score': trend_data.get('trend_1h_score', 0),
+                'trend_15m_score': trend_data.get('trend_15m_score', 0),
+                'trend_5m_score': trend_data.get('trend_5m_score', 0)
+            }
             
             # Step 5 (Embedded in Step 4 for clean output)
             
