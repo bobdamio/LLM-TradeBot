@@ -117,9 +117,11 @@ class StrategyComposer:
         elif adx_value < 15:
             result['blocking_reason'] = f"Weak Trend Strength (ADX {adx_value:.0f} < 15)"
         elif trend_1h == 'long' and oi_change < -5.0:
-            result['blocking_reason'] = f"OI Divergence: Trend UP but OI {oi_change:.1f}%"
+            # result['blocking_reason'] = f"OI Divergence: Trend UP but OI {oi_change:.1f}%"
+            pass  # Allow trend following even with OI drop
         elif trend_1h == 'short' and oi_change > 5.0:
-            result['blocking_reason'] = f"OI Divergence: Trend DOWN but OI +{oi_change:.1f}%"
+            # result['blocking_reason'] = f"OI Divergence: Trend DOWN but OI +{oi_change:.1f}%"
+            pass
         elif trend_1h == 'long' and oi_fuel.get('whale_trap_risk', False):
              result['blocking_reason'] = f"Whale trap detected (OI {oi_change:.1f}%)"
         else:
