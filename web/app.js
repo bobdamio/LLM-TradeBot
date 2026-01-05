@@ -345,10 +345,16 @@ function renderDecisionTable(history, positions = []) {
     if (!tbody) return;
 
     tbody.innerHTML = history.map(d => {
-        // 只显示时分秒 (HH:MM:SS)
+        // 显示日期+时间 (MM-DD HH:MM:SS)
         let time = d.timestamp || 'Just now';
         if (time.includes(' ')) {
-            time = time.split(' ')[1] || time; // 提取时间部分
+            const parts = time.split(' ');
+            if (parts.length >= 2) {
+                // 提取日期的月-日部分和时间
+                const datePart = parts[0].split('-').slice(1).join('-'); // 提取 MM-DD
+                const timePart = parts[1]; // HH:MM:SS
+                time = `${datePart} ${timePart}`;
+            }
         }
         const symbol = d.symbol || 'BTCUSDT';
         const action = (d.action || 'HOLD').toUpperCase();
@@ -2033,6 +2039,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // Trade History Rendering (Backend Data)
 // ============================================================================
 
+// Helper to format datetime to MM-DD HH:MM:SS
+function formatDateTime(datetime) {
+    if (!datetime || datetime === '-') return '-';
+    if (datetime.includes(' ')) {
+        const parts = datetime.split(' ');
+        if (parts.length >= 2) {
+            // 提取日期的月-日部分和时间
+            const datePart = parts[0].split('-').slice(1).join('-'); // 提取 MM-DD
+            const timePart = parts[1]; // HH:MM:SS
+            return `${datePart} ${timePart}`;
+        }
+    }
+    return datetime;
+}
+
 // Helper to format cycle ID (cycle_0013_...) -> #13
 function formatCycle(cycleId) {
     if (!cycleId || cycleId === '-') return '-';
@@ -2090,7 +2111,7 @@ function renderTradeHistory(trades) {
 
         return `
             <tr>
-                <td>${time.split(' ')[1] || time}</td>
+                <td>${formatDateTime(time)}</td>
                 <td>${actionIcon} ${openCycle}</td>
                 <td>${closeCycle}</td>
                 <td>${symbol}</td>
