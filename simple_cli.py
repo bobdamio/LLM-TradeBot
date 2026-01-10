@@ -12,7 +12,7 @@ load_dotenv(override=True)
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 
 # 版本号: v+日期+迭代次数
-VERSION = "v20260111_1"
+VERSION = "v20260111_2"
 
 from src.api.binance_client import BinanceClient
 from src.execution.engine import ExecutionEngine
