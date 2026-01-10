@@ -86,7 +86,7 @@ from src.agents import (
 )
 from src.strategy.llm_engine import StrategyEngine
 from src.agents.predict_agent import PredictAgent
-from src.agents.symbol_selector_agent import get_selector  # 🔝 AUTO2 Support
+from src.agents.symbol_selector_agent import get_selector  # 🔝 AUTO3 Support
 from src.server.app import app
 from src.server.state import global_state
 
@@ -153,17 +153,17 @@ class MultiAgentTradingBot:
                 else:
                     self.symbols = [symbol_str]
 
-        # 🔝 AUTO2 Dynamic Resolution (takes priority)
-        self.use_auto2 = 'AUTO2' in self.symbols
-        if self.use_auto2:
-            self.symbols.remove('AUTO2')
-            # If AUTO2 was the only symbol, add temporary placeholder (will be replaced at startup)
+        # 🔝 AUTO3 Dynamic Resolution (takes priority)
+        self.use_auto3 = 'AUTO3' in self.symbols
+        if self.use_auto3:
+            self.symbols.remove('AUTO3')
+            # If AUTO3 was the only symbol, add temporary placeholder (will be replaced at startup)
             if not self.symbols:
-                self.symbols = ['FETUSDT']  # Temporary, replaced by AUTO2 selection in main()
-            log.info("🔝 AUTO2 mode enabled - Startup backtest will run")
+                self.symbols = ['FETUSDT']  # Temporary, replaced by AUTO3 selection in main()
+            log.info("🔝 AUTO3 mode enabled - Startup backtest will run")
         
         # 🤖 AI500 Dynamic Resolution
-        self.use_ai500 = 'AI500_TOP5' in self.symbols and not self.use_auto2
+        self.use_ai500 = 'AI500_TOP5' in self.symbols and not self.use_auto3
         self.ai500_last_update = None
         self.ai500_update_interval = 6 * 3600  # 6 hours in seconds
         
@@ -416,16 +416,16 @@ class MultiAgentTradingBot:
         updater_thread.start()
         log.info(f"🚀 AI500 Auto-updater started (interval: 6 hours)")
     
-    async def _resolve_auto2_symbols(self):
+    async def _resolve_auto3_symbols(self):
         """
-        🔝 AUTO2 Dynamic Resolution via Backtest
+        🔝 AUTO3 Dynamic Resolution via Backtest
         
         Gets AI500 Top 5 by volume, backtests each, and selects top 2
         """
         selector = get_selector()
         top2 = await selector.select_top2(force_refresh=False)
         
-        log.info(f"🔝 AUTO2 resolved to: {', '.join(top2)}")
+        log.info(f"🔝 AUTO3 resolved to: {', '.join(top2)}")
         return top2
 
     def _get_closed_klines(self, klines: List[Dict]) -> List[Dict]:
@@ -2829,7 +2829,7 @@ def main():
     parser.add_argument('--take-profit', type=float, default=2.0, help='止盈百分比')
     parser.add_argument('--kline-limit', type=int, default=300, help='K线拉取数量 (用于 warmup 测试)')
     parser.add_argument('--symbols', type=str, default='', help='覆盖交易对 (CSV, 例如: BTCUSDT,ETHUSDT)')
-    parser.add_argument('--skip-auto2', action='store_true', help='在 once 模式跳过 AUTO2 解析')
+    parser.add_argument('--skip-auto3', action='store_true', help='在 once 模式跳过 AUTO3 解析')
     parser.add_argument('--mode', choices=['once', 'continuous'], default='continuous', help='运行模式')
     parser.add_argument('--interval', type=float, default=3.0, help='持续运行间隔（分钟）')
     # CLI Headless Mode
@@ -2889,37 +2889,37 @@ def main():
         kline_limit=args.kline_limit
     )
     
-    # 🔝 AUTO2 STARTUP EXECUTION (MANDATORY - runs before trading starts)
-    skip_auto2 = args.skip_auto2 and args.mode == 'once'
-    if skip_auto2 and getattr(bot, 'use_auto2', False):
-        log.info("⏭️ AUTO2 skipped for once mode")
-        bot.use_auto2 = False
+    # 🔝 AUTO3 STARTUP EXECUTION (MANDATORY - runs before trading starts)
+    skip_auto3 = args.skip_auto3 and args.mode == 'once'
+    if skip_auto3 and getattr(bot, 'use_auto3', False):
+        log.info("⏭️ AUTO3 skipped for once mode")
+        bot.use_auto3 = False
 
-    if hasattr(bot, 'use_auto2') and bot.use_auto2:
+    if hasattr(bot, 'use_auto3') and bot.use_auto3:
         log.info("=" * 60)
-        log.info("🔝 AUTO2 STARTUP - Getting AI500 Top5 and selecting Top2...")
+        log.info("🔝 AUTO3 STARTUP - Getting AI500 Top5 and selecting Top2...")
         log.info("=" * 60)
         
         import asyncio
         loop = asyncio.get_event_loop()
-        top2 = loop.run_until_complete(bot._resolve_auto2_symbols())
+        top2 = loop.run_until_complete(bot._resolve_auto3_symbols())
         
         # Update bot symbols
         bot.symbols = top2
         bot.current_symbol = top2[0] if top2 else 'FETUSDT'
         global_state.symbols = top2
 
-        # Ensure PredictAgent exists for AUTO2 symbols
+        # Ensure PredictAgent exists for AUTO3 symbols
         for symbol in bot.symbols:
             if symbol not in bot.predict_agents:
                 bot.predict_agents[symbol] = PredictAgent(horizon='30m', symbol=symbol)
-                log.info(f"🆕 Initialized PredictAgent for {symbol} (AUTO2)")
+                log.info(f"🆕 Initialized PredictAgent for {symbol} (AUTO3)")
         
         # Start auto-refresh thread (12h interval)
         selector = get_selector()
         selector.start_auto_refresh()
         
-        log.info(f"✅ AUTO2 startup complete: {', '.join(top2)}")
+        log.info(f"✅ AUTO3 startup complete: {', '.join(top2)}")
         log.info("🔄 Auto-refresh started (12h interval)")
         log.info("=" * 60)
     

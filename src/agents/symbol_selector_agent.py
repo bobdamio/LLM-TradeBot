@@ -73,7 +73,7 @@ class SymbolSelectorAgent:
         self.major_coins = self.MAJOR_COINS
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.cache_file = self.cache_dir / "auto_top2_cache.json"
+        self.cache_file = self.cache_dir / "auto_top3_cache.json"
         
         self.refresh_interval = refresh_interval_hours
         self.lookback_hours = lookback_hours
