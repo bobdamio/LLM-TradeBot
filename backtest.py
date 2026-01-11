@@ -66,8 +66,14 @@ Examples:
     parser.add_argument(
         "--symbol",
         type=str,
-        default="BTCUSDT",
-        help="交易对 (默认: BTCUSDT)"
+        default="AUTO3",
+        help="交易对 (AUTO3=自动选币, 或指定如 BTCUSDT)"
+    )
+    
+    parser.add_argument(
+        "--no-auto3",
+        action="store_true",
+        help="禁用 AUTO3 自动选币，使用 --symbol 指定的币种"
     )
     
     parser.add_argument(
@@ -191,101 +197,118 @@ async def main():
     # 导入回测模块
     from src.backtest.engine import BacktestEngine, BacktestConfig
     from src.backtest.report import BacktestReport
+    from src.agents.symbol_selector_agent import get_selector
     
-    # 创建配置
-    config = BacktestConfig(
-        symbol=args.symbol,
-        start_date=args.start,
-        end_date=args.end,
-        initial_capital=args.capital,
-        max_position_size=args.max_position,
-        stop_loss_pct=args.stop_loss,
-        take_profit_pct=args.take_profit,
-        step=args.step,
-        strategy_mode=args.strategy_mode,
-        use_llm=args.use_llm,
-        llm_cache=args.llm_cache
-    )
+    # AUTO3 动态选币 (Phase 2: 默认启用)
+    symbols_to_test = []
+    use_auto3 = args.symbol == "AUTO3" and not args.no_auto3
     
-    # 创建引擎
-    engine = BacktestEngine(config)
+    if use_auto3:
+        print("\n🔝 AUTO3 启动中 - 正在选择最佳交易币种...")
+        try:
+            selector = get_selector()
+            selected = selector.get_symbols(force_refresh=False)
+            if selected:
+                symbols_to_test = selected
+                print(f"✅ AUTO3 选中: {', '.join(symbols_to_test)}")
+            else:
+                print("⚠️ AUTO3 选币失败，使用默认 BTCUSDT")
+                symbols_to_test = ['BTCUSDT']
+        except Exception as e:
+            print(f"⚠️ AUTO3 选币异常: {e}，使用默认 BTCUSDT")
+            symbols_to_test = ['BTCUSDT']
+    else:
+        symbols_to_test = [args.symbol]
     
-    # 进度显示
-    last_pct = 0
-    def progress_callback(data):
-        nonlocal last_pct
-        pct = data.get('progress', data.get('pct', 0))
-        if int(pct) > last_pct:
-            last_pct = int(pct)
-            bar_len = 30
-            filled = int(bar_len * pct / 100)
-            bar = "█" * filled + "░" * (bar_len - filled)
-            print(f"\r📊 Progress: [{bar}] {pct:.1f}%", end="", flush=True)
+    # 运行多币种回测 (AUTO3 支持)
+    all_results = []
     
-    # 运行回测
-    try:
-        result = await engine.run(progress_callback=progress_callback)
-        print()  # 换行
-    except KeyboardInterrupt:
-        print("\n\n⚠️ Backtest interrupted by user")
-        sys.exit(0)
-    except Exception as e:
-        print(f"\n\n❌ Error during backtest: {e}")
-        sys.exit(1)
-    
-    # 显示结果
-    print("\n" + "=" * 60)
-    print("📊 Backtest Results")
-    print("=" * 60)
-    
-    m = result.metrics
-    
-    print(f"\n📈 Returns:")
-    print(f"   Total Return:     {m.total_return:+.2f}%")
-    print(f"   Annualized Return: {m.annualized_return:+.2f}%")
-    print(f"   Max Drawdown:     {m.max_drawdown_pct:.2f}%")
-    
-    print(f"\n⚖️ Risk Metrics:")
-    print(f"   Sharpe Ratio:  {m.sharpe_ratio:.2f}")
-    print(f"   Sortino Ratio: {m.sortino_ratio:.2f}")
-    print(f"   Calmar Ratio:  {m.calmar_ratio:.2f}")
-    print(f"   Volatility:    {m.volatility:.2f}%")
-    
-    print(f"\n📋 Trading Stats:")
-    print(f"   Total Trades:  {m.total_trades}")
-    print(f"   Win Rate:      {m.win_rate:.1f}%")
-    print(f"   Profit Factor: {m.profit_factor:.2f}")
-    print(f"   Avg PnL:       ${m.avg_trade_pnl:.2f}")
-    print(f"   Avg Hold Time: {m.avg_holding_time:.1f}h")
-    
-    print(f"\n🐂🐻 Long/Short:")
-    print(f"   Long:  {m.long_trades} trades ({m.long_win_rate:.1f}% win) → ${m.long_pnl:+,.2f}")
-    print(f"   Short: {m.short_trades} trades ({m.short_win_rate:.1f}% win) → ${m.short_pnl:+,.2f}")
-    
-    print(f"\n⏱️ Duration: {result.duration_seconds:.1f} seconds")
-    
-    # 生成报告
-    if not args.no_report:
-        os.makedirs(args.output, exist_ok=True)
+    for symbol in symbols_to_test:
+        print(f"\n{'='*60}")
+        print(f"🔬 回测币种: {symbol}")
+        print(f"{'='*60}")
         
-        report = BacktestReport(output_dir=args.output)
-        
-        filename = f"backtest_{args.symbol}_{args.start}_{args.end}"
-        filepath = report.generate(
-            metrics=m,
-            equity_curve=result.equity_curve,
-            trades_df=engine.portfolio.get_trades_dataframe(),
-            config={
-                'symbol': args.symbol,
-                'initial_capital': args.capital,
-            },
-            filename=filename
+        # 创建配置
+        config = BacktestConfig(
+            symbol=symbol,
+            start_date=args.start,
+            end_date=args.end,
+            initial_capital=args.capital,
+            max_position_size=args.max_position,
+            stop_loss_pct=args.stop_loss,
+            take_profit_pct=args.take_profit,
+            step=args.step,
+            strategy_mode=args.strategy_mode,
+            use_llm=args.use_llm,
+            llm_cache=args.llm_cache
         )
         
-        print(f"\n📄 Report saved to: {filepath}")
+        # 创建引擎
+        engine = BacktestEngine(config)
+        
+        # 进度显示
+        last_pct = 0
+        def progress_callback(data):
+            nonlocal last_pct
+            pct = data.get('progress', data.get('pct', 0))
+            if int(pct) > last_pct:
+                last_pct = int(pct)
+                bar_len = 30
+                filled = int(bar_len * pct / 100)
+                bar = "█" * filled + "░" * (bar_len - filled)
+                print(f"\r📊 Progress: [{bar}] {pct:.1f}%", end="", flush=True)
+        
+        # 运行回测
+        try:
+            result = await engine.run(progress_callback=progress_callback)
+            print()  # 换行
+            all_results.append((symbol, result, engine))
+        except KeyboardInterrupt:
+            print("\n\n⚠️ Backtest interrupted by user")
+            sys.exit(0)
+        except Exception as e:
+            print(f"\n\n❌ Error during backtest for {symbol}: {e}")
+            continue
+    
+    # 显示所有结果汇总
+    if not all_results:
+        print("\n❌ 没有成功完成的回测")
+        sys.exit(1)
     
     print("\n" + "=" * 60)
-    print("✅ Backtest Complete!")
+    print("📊 回测结果汇总" + (" (AUTO3)" if use_auto3 else ""))
+    print("=" * 60)
+    
+    total_return_sum = 0
+    for symbol, result, engine in all_results:
+        m = result.metrics
+        total_return_sum += m.total_return
+        
+        print(f"\n🪙 {symbol}:")
+        print(f"   收益: {m.total_return:+.2f}% | 回撤: {m.max_drawdown_pct:.2f}% | 胜率: {m.win_rate:.1f}% | 交易: {m.total_trades}")
+        
+        # 生成报告
+        if not args.no_report:
+            os.makedirs(args.output, exist_ok=True)
+            report = BacktestReport(output_dir=args.output)
+            filename = f"backtest_{symbol}_{args.start}_{args.end}"
+            filepath = report.generate(
+                metrics=m,
+                equity_curve=result.equity_curve,
+                trades_df=engine.portfolio.get_trades_dataframe(),
+                config={
+                    'symbol': symbol,
+                    'initial_capital': args.capital,
+                },
+                filename=filename
+            )
+            print(f"   📄 报告: {filepath}")
+    
+    if len(all_results) > 1:
+        print(f"\n📈 总收益 (所有币种): {total_return_sum:+.2f}%")
+    
+    print("\n" + "=" * 60)
+    print("✅ 回测完成!")
     print("=" * 60)
 
 

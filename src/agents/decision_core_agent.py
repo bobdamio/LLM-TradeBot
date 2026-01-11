@@ -307,16 +307,28 @@ class DecisionCoreAgent:
                 return result
         
         # 6. 多周期对齐检测
-        
-        # 6. 多周期对齐检测
         aligned, alignment_reason = self._check_multi_period_alignment(
             scores['trend_1h'],
             scores['trend_15m'],
             scores['trend_5m']
         )
         
-        # 7. 初始决策映射（传入 regime 以使用动态阈值）
-        action, base_confidence = self._score_to_action(weighted_score, aligned, regime)
+        # ========== Phase 4: 震荡市策略分支 ==========
+        is_choppy_market = False
+        if regime:
+            regime_type = (regime.get('regime', '') or '').lower()
+            if regime_type in ['volatile_directionless', 'choppy', 'ranging']:
+                is_choppy_market = True
+        
+        if is_choppy_market:
+            # 震荡市：使用均值回归策略
+            log.info(f"🔄 [震荡市检测] 切换到均值回归策略")
+            action, base_confidence, alignment_reason = self._evaluate_choppy_strategy(
+                quant_analysis, position
+            )
+        else:
+            # 趋势市：使用原有趋势策略
+            action, base_confidence = self._score_to_action(weighted_score, aligned, regime)
 
         # ========== 对齐弱时收紧趋势强度 ==========
         if action in ['long', 'short', 'open_long', 'open_short'] and regime and not aligned:
@@ -327,19 +339,29 @@ class DecisionCoreAgent:
                 base_confidence = 0.1
                 alignment_reason = f"对齐弱且ADX不足(ADX {adx:.1f} < 25)"
 
-        # ========== 低量/弱趋势过滤 ==========
+        # ========== 低量/弱趋势过滤 (Phase 3: 放宽量能要求) ==========
         if action in ['long', 'short', 'open_long', 'open_short'] and regime:
             adx = regime.get('adx', 0)
-            if volume_ratio is not None and adx < 20 and volume_ratio < 0.8:
-                if abs(weighted_score) < 35:
+            # Phase 3: 放宽低量过滤 (0.7 -> 0.5)
+            if volume_ratio is not None and volume_ratio < 0.5:
+                log.warning(f"🚫 低量过滤: RVOL {volume_ratio:.2f} < 0.5")
+                action = 'hold'
+                base_confidence = 0.1
+                alignment_reason = f"低量过滤(RVOL {volume_ratio:.2f} < 0.5)"
+            elif volume_ratio is not None and adx < 20 and volume_ratio < 0.8:
+                if abs(weighted_score) < 40:  # Phase 2: 提高强信号阈值
                     log.warning(f"🚫 低量/弱趋势过滤: ADX {adx:.1f}, RVOL {volume_ratio:.2f}")
                     action = 'hold'
                     base_confidence = 0.1
                     alignment_reason = f"低量/弱趋势过滤(ADX {adx:.1f}, RVOL {volume_ratio:.2f})"
                 else:
                     # Strong signal but weak volume: reduce confidence
-                    base_confidence *= 0.85
+                    base_confidence *= 0.80  # Phase 2: 更强惩罚
                     alignment_reason += f" | 低量降信心(ADX {adx:.1f}, RVOL {volume_ratio:.2f})"
+            # Phase 2: 高成交量加分
+            elif volume_ratio is not None and volume_ratio > 1.5:
+                base_confidence = min(base_confidence * 1.15, 0.95)
+                alignment_reason += f" | 高量确认(RVOL {volume_ratio:.2f})"
 
         # ========== 交易防护拦截 ==========
         if action in ['long', 'short', 'open_long', 'open_short']:
@@ -382,6 +404,27 @@ class DecisionCoreAgent:
                  if action in ['long', 'open_long']:
                      base_confidence = min(base_confidence * 1.2, 0.95)
                      alignment_reason += " | 底部吸筹确认(放量不跌)"
+
+            # 5. 逆向情绪 (Contrarian Emotion)
+            if traps.get('panic_bottom'):
+                if action in ['long', 'open_long']:
+                    base_confidence = min(base_confidence * 1.3, 0.95) # 强力加分
+                    alignment_reason += " | 恐慌抛售契机(超卖+放量)"
+                elif action in ['short', 'open_short']:
+                    log.warning("🚫 恐慌抛售底部(Panic Bottom)拦截做空")
+                    action = 'hold'
+                    base_confidence = 0.1
+                    alignment_reason = "恐慌抛售底部，禁止追空"
+
+            if traps.get('fomo_top'):
+                if action in ['short', 'open_short']:
+                    base_confidence = min(base_confidence * 1.3, 0.95)
+                    alignment_reason += " | FOMO顶部衰竭(超买+放量)"
+                elif action in ['long', 'open_long']:
+                    log.warning("🚫 FOMO顶部(FOMO Top)拦截做多")
+                    action = 'hold'
+                    base_confidence = 0.1
+                    alignment_reason = "FOMO顶部衰竭，禁止追高"
         
         # 8. 综合信心度校准与对抗审计
         final_confidence = base_confidence * 100
@@ -555,8 +598,8 @@ class DecisionCoreAgent:
             动态交易参数字典
         """
         base_size = 100.0  # 基础仓位 USDT
-        base_stop_loss = 1.0  # 基础止损百分比
-        base_take_profit = 2.0  # 基础止盈百分比
+        base_stop_loss = 1.5  # 基础止损百分比 (Phase 2: 1.0% -> 1.5%)
+        base_take_profit = 3.0  # 基础止盈百分比 (Phase 2: 2.0% -> 3.0%)
         
         size_multiplier = 1.0
         sl_multiplier = 1.0
@@ -575,11 +618,11 @@ class DecisionCoreAgent:
                 # 趋势市场：可以略增仓位，扩大止盈
                 size_multiplier *= 1.2
                 tp_multiplier *= 1.5  # 趋势中让利润奔跑
-            elif regime_type == 'choppy':
-                # 震荡市场：减少仓位，收紧参数
-                size_multiplier *= 0.6
-                sl_multiplier *= 0.8
-                tp_multiplier *= 0.8
+            elif regime_type in ['choppy', 'volatile_directionless', 'ranging']:
+                # Phase 4: 震荡市均值回归 - 窄止损止盈，快进快出
+                size_multiplier *= 0.7  # 适中仓位
+                sl_multiplier *= 0.5    # 止损收窄到 0.75% (1.5% * 0.5)
+                tp_multiplier *= 0.4    # 止盈收窄到 1.2% (3.0% * 0.4)
         
         # 根据价格位置调整
         if position:
@@ -624,11 +667,11 @@ class DecisionCoreAgent:
         Returns:
             (是否对齐, 对齐原因)
         """
-        # 提高阈值判断，减少噪音信号（回测放宽边界以避免无交易）
+        # 提高阈值判断，减少噪音信号 (Phase 2 Optimization: 更强趋势确认)
         signs = [
-            1 if score_1h >= 18 else (-1 if score_1h <= -18 else 0),   # 1h 放宽至 >=18
-            1 if score_15m >= 12 else (-1 if score_15m <= -12 else 0), # 15m 放宽至 >=12
-            1 if score_5m >= 10 else (-1 if score_5m <= -10 else 0)    # 5m 保持
+            1 if score_1h >= 25 else (-1 if score_1h <= -25 else 0),   # 1h 提高至 >=25
+            1 if score_15m >= 18 else (-1 if score_15m <= -18 else 0), # 15m 提高至 >=18
+            1 if score_5m >= 12 else (-1 if score_5m <= -12 else 0)    # 5m 提高至 >=12
         ]
         
         # 三周期完全一致 - 最强信号
@@ -644,6 +687,64 @@ class DecisionCoreAgent:
         
         # 不对齐 - 需要等待更明确的信号
         return False, f"多周期分歧(1h:{signs[0]}, 15m:{signs[1]}, 5m:{signs[2]})，等待1h确认"
+    
+    def _evaluate_choppy_strategy(
+        self,
+        quant_analysis: Dict,
+        position: Dict = None
+    ) -> Tuple[str, float, str]:
+        """
+        Phase 4: 震荡市均值回归策略
+        
+        策略逻辑:
+        - RSI 超卖 (<30) + 低位 (<30%) → 做多
+        - RSI 超买 (>70) + 高位 (>70%) → 做空
+        - 窄止损止盈，快进快出
+        
+        Returns:
+            (action, confidence, reason)
+        """
+        osc_data = quant_analysis.get('oscillator', {})
+        
+        # 获取 RSI 值（优先使用 15m，fallback 到 5m）
+        rsi_15m = osc_data.get('rsi_15m', 50)
+        rsi_5m = osc_data.get('rsi_5m', 50)
+        rsi = rsi_15m if rsi_15m != 50 else rsi_5m
+        
+        # 获取价格位置
+        pos_pct = 50
+        if position:
+            pos_pct = position.get('position_pct', 50)
+        
+        # 均值回归做多: RSI 超卖 OR 低位 (放宽条件)
+        # Phase 4.1: 使用 OR 逻辑，任一条件满足即可
+        if rsi < 40 or pos_pct < 40:
+            if rsi < 35 and pos_pct < 45:
+                # 强信号：两条件都满足
+                confidence = 0.70 + (35 - rsi) * 0.005
+                log.info(f"📈 [震荡策略] 强均值回归做多: RSI={rsi:.1f}, 位置={pos_pct:.1f}%")
+                return 'long', min(confidence, 0.80), f"震荡市强做多(RSI={rsi:.1f}, 位置={pos_pct:.1f}%)"
+            elif rsi < 40 and pos_pct < 50:
+                # 中等信号：条件部分满足
+                confidence = 0.60
+                log.info(f"📈 [震荡策略] 均值回归做多: RSI={rsi:.1f}, 位置={pos_pct:.1f}%")
+                return 'long', confidence, f"震荡市做多(RSI={rsi:.1f}, 位置={pos_pct:.1f}%)"
+        
+        # 均值回归做空: RSI 超买 OR 高位
+        if rsi > 60 or pos_pct > 60:
+            if rsi > 65 and pos_pct > 55:
+                # 强信号
+                confidence = 0.70 + (rsi - 65) * 0.005
+                log.info(f"📉 [震荡策略] 强均值回归做空: RSI={rsi:.1f}, 位置={pos_pct:.1f}%")
+                return 'short', min(confidence, 0.80), f"震荡市强做空(RSI={rsi:.1f}, 位置={pos_pct:.1f}%)"
+            elif rsi > 60 and pos_pct > 50:
+                # 中等信号
+                confidence = 0.60
+                log.info(f"📉 [震荡策略] 均值回归做空: RSI={rsi:.1f}, 位置={pos_pct:.1f}%")
+                return 'short', confidence, f"震荡市做空(RSI={rsi:.1f}, 位置={pos_pct:.1f}%)"
+        
+        # 条件不满足，观望
+        return 'hold', 0.3, f"震荡市观望(RSI={rsi:.1f}, 位置={pos_pct:.1f}%)"
     
     def _score_to_action(
         self, 
@@ -663,28 +764,28 @@ class DecisionCoreAgent:
             (action, confidence)
         """
         # 分离多空阈值 - 关键优化：启用双向交易
-        long_threshold = 20   # 提高做多阈值
-        short_threshold = 18  # 做空阈值略低，增加做空机会
+        long_threshold = 20   # 做多阈值 (Phase 3: 24 -> 20)
+        short_threshold = 18  # 做空阈值 (Phase 3: 22 -> 18)
         
         # 根据市场状态动态调整阈值
         if regime:
             regime_type = (regime.get('regime', '') or '').lower()
             if regime_type in ['trending_down']:
                 # 下跌趋势：大幅降低做空阈值，提高做多阈值
-                short_threshold = 12
-                long_threshold = 25
+                short_threshold = 18
+                long_threshold = 32
             elif regime_type in ['trending_up']:
                 # 上涨趋势：降低做多阈值，提高做空阈值
-                long_threshold = 15
-                short_threshold = 25
+                long_threshold = 22
+                short_threshold = 32
             elif regime_type in ['volatile_directionless', 'choppy']:
-                # 震荡市：提高两边阈值，减少交易
-                long_threshold = 25
-                short_threshold = 25
+                # 震荡市：提高两边阈值，减少交易 (Phase 2 Tuned: 35 -> 30)
+                long_threshold = 30
+                short_threshold = 30
             elif regime_type in ['volatile_trending']:
                 # 波动趋势：中等阈值
-                long_threshold = 18
-                short_threshold = 18
+                long_threshold = 25
+                short_threshold = 25
         
         # 对齐时放宽阈值，提升中等信号的成交率
         if aligned:

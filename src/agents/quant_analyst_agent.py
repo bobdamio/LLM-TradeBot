@@ -73,6 +73,14 @@ class QuantAnalystAgent:
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         return tr.ewm(alpha=1/period, adjust=False).mean()
         
+    @staticmethod
+    def calculate_bollinger_bands(series: pd.Series, window: int = 20, num_std: float = 2.0):
+        rolling_mean = series.rolling(window=window).mean()
+        rolling_std = series.rolling(window=window).std()
+        upper_band = rolling_mean + (rolling_std * num_std)
+        lower_band = rolling_mean - (rolling_std * num_std)
+        return upper_band, lower_band
+        
     def analyze_trend(self, df: pd.DataFrame) -> Dict:
         """Calculate trend score (-100 to +100)"""
         if df is None or len(df) < 60:
@@ -159,6 +167,8 @@ class QuantAnalystAgent:
             'weak_rebound': False,        # 弱反弹 (暴跌后无量反弹 - 别幻想抄底)
             'volume_divergence': False,   # 量价背离 (高位缩量 - 庄家出货)
             'accumulation': False,        # 底部吸筹 (底部放量不跌)
+            'panic_bottom': False,        # 恐慌抛售 (逆向看多)
+            'fomo_top': False,            # FOMO 顶部 (逆向看空)
             'details': {}
         }
         
@@ -243,6 +253,30 @@ class QuantAnalystAgent:
                 if volatility < 0.005 and avg_vol_short > avg_vol_long * 1.2:
                     traps['accumulation'] = True
                     traps['details']['pattern'] = "bottom_accumulation"
+
+        # 5. 检测 "逆向情绪" (Contrarian Emotion)
+        # 逻辑：利用布林带和RSI极端值识别市场情绪极点
+        if len(close) > 20:
+            current_price = close.iloc[-1]
+            current_rsi = self.calculate_rsi(close).iloc[-1]
+            upper, lower = self.calculate_bollinger_bands(close)
+            curr_upper = upper.iloc[-1]
+            curr_lower = lower.iloc[-1]
+            
+            avg_vol = volume.iloc[-20:].mean()
+            curr_vol = volume.iloc[-1]
+            
+            # 恐慌抛售 (Panic Selling) -> 看多机会
+            # 跌破下轨 + RSI超卖 + 放量 (恐慌盘涌出)
+            if current_price < curr_lower and current_rsi < 25 and curr_vol > avg_vol * 2.0:
+                traps['panic_bottom'] = True
+                traps['details']['emotion'] = "panic_selling_oversold"
+                
+            # FOMO 顶部 (FOMO Exhaustion) -> 看空机会
+            # 突破上轨 + RSI超买 + 放量 (最后接盘侠)
+            if current_price > curr_upper and current_rsi > 75 and curr_vol > avg_vol * 2.5:
+                traps['fomo_top'] = True
+                traps['details']['emotion'] = "fomo_top_overbought"
 
         return traps
 

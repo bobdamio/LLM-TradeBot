@@ -5,7 +5,7 @@
 Responsibilities:
 1. Get AI500 Top 10 + Major coins by volume
 2. Stage 1: Coarse filter (1h backtest) → Top 5
-3. Stage 2: Fine filter (15m backtest) → Top 2
+3. Stage 2: Fine filter (15m backtest) → Top 3
 4. 6-hour refresh cycle
 5. Startup execution (mandatory)
 
@@ -33,7 +33,7 @@ class SymbolSelectorAgent:
     Two-Stage Workflow:
     1. Get AI500 Top 10 + Major coins by 24h volume (~16 symbols)
     2. Stage 1: Coarse filter (1h backtest, step=12) → Top 5
-    3. Stage 2: Fine filter (15m backtest, step=3) → Top 2
+    3. Stage 2: Fine filter (15m backtest, step=3) → Top 3
     4. Cache results for 6 hours
     5. Auto-refresh every 6 hours
     """
@@ -51,7 +51,7 @@ class SymbolSelectorAgent:
     # Major coins to include alongside AI500
     MAJOR_COINS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT"]
     
-    FALLBACK_SYMBOLS = ["BTCUSDT", "ETHUSDT"]  # Top 2 fallback
+    FALLBACK_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]  # Top 3 fallback
     
     def __init__(
         self,
@@ -84,28 +84,28 @@ class SymbolSelectorAgent:
         
         log.info(f"🔝 SymbolSelectorAgent (AUTO3) initialized: Two-stage selection, {refresh_interval_hours}h refresh")
     
-    async def select_top2(self, force_refresh: bool = False) -> List[str]:
+    async def select_top3(self, force_refresh: bool = False) -> List[str]:
         """
-        Select top 2 symbols using two-stage filtering
+        Select top 3 symbols using two-stage filtering
         
         Stage 1: Coarse filter (1h backtest) on ~16 symbols → Top 5
-        Stage 2: Fine filter (15m backtest) on Top 5 → Top 2
+        Stage 2: Fine filter (15m backtest) on Top 5 → Top 3
         
         Args:
             force_refresh: Force re-run backtests even if cache valid
             
         Returns:
-            List of 2 symbol names
+            List of 3 symbol names
         """
         # Check cache validity
         if not force_refresh and self._is_cache_valid():
             cached = self._load_cache()
-            symbols = [item['symbol'] for item in cached['top2']]
+            symbols = [item['symbol'] for item in cached.get('top3', cached.get('top2', []))]
             if symbols:
                 log.info(f"🔝 Using cached AUTO3: {symbols} (age: {self._get_cache_age():.1f}h)")
                 return symbols
             else:
-                log.warning("⚠️ Cache has empty top2, forcing refresh...")
+                log.warning("⚠️ Cache has empty top3, forcing refresh...")
         
         start_time = time.time()
         
@@ -148,13 +148,13 @@ class SymbolSelectorAgent:
                 stage_name="Stage 2"
             )
             
-            # Rank and get Top 2
+            # Rank and get Top 3
             ranked_stage2 = self._rank_symbols(stage2_results)
-            top2_data = ranked_stage2[:2]
-            top2_symbols = [item['symbol'] for item in top2_data]
+            top3_data = ranked_stage2[:3]
+            top3_symbols = [item['symbol'] for item in top3_data]
             
             # Save to cache (include both stages for reference)
-            self._save_cache(top2_data, {
+            self._save_cache(top3_data, {
                 "stage1_results": stage1_results,
                 "stage2_results": stage2_results,
                 "top5": top5_symbols
@@ -164,11 +164,11 @@ class SymbolSelectorAgent:
             log.info("=" * 60)
             log.info(f"✅ AUTO3 Two-Stage Selection Complete in {elapsed:.1f}s")
             log.info(f"   Stage 1: {len(candidates)} → 5 symbols (1h backtest)")
-            log.info(f"   Stage 2: 5 → 2 symbols (15m backtest)")
-            log.info(f"   🎯 Selected: {top2_symbols}")
+            log.info(f"   Stage 2: 5 → 3 symbols (15m backtest)")
+            log.info(f"   🎯 Selected: {top3_symbols}")
             log.info("=" * 60)
             
-            return top2_symbols
+            return top3_symbols
             
         except Exception as e:
             log.error(f"❌ AUTO3 selection failed: {e}", exc_info=True)
@@ -343,7 +343,7 @@ class SymbolSelectorAgent:
         with open(self.cache_file, 'r') as f:
             return json.load(f)
     
-    def _save_cache(self, top2: List[Dict], all_results: Dict):
+    def _save_cache(self, top3: List[Dict], all_results: Dict):
         """Save results to cache"""
         now = datetime.now()
         cache_data = {
@@ -351,7 +351,7 @@ class SymbolSelectorAgent:
             "valid_until": (now + timedelta(hours=self.refresh_interval)).isoformat(),
             "lookback_hours": self.lookback_hours,
             "selection_method": "two_stage",
-            "top2": top2,
+            "top3": top3,
             "top5": all_results.get("top5", []),
             "stage1_results": all_results.get("stage1_results", []),
             "stage2_results": all_results.get("stage2_results", [])
@@ -380,7 +380,7 @@ class SymbolSelectorAgent:
                 try:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
-                    loop.run_until_complete(self.select_top2(force_refresh=True))
+                    loop.run_until_complete(self.select_top3(force_refresh=True))
                     loop.close()
                 except Exception as e:
                     log.error(f"❌ Auto-refresh failed: {e}", exc_info=True)
@@ -395,6 +395,32 @@ class SymbolSelectorAgent:
             self._stop_refresh.set()
             self._refresh_thread.join(timeout=5)
             log.info("🛑 AUTO3 auto-refresh stopped")
+    
+    def get_symbols(self, force_refresh: bool = False) -> List[str]:
+        """
+        Synchronous wrapper for select_top3
+        
+        Args:
+            force_refresh: Force re-run backtests even if cache valid
+            
+        Returns:
+            List of 3 symbol names
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're inside an async context
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        lambda: asyncio.run(self.select_top3(force_refresh))
+                    )
+                    return future.result()
+            else:
+                return loop.run_until_complete(self.select_top3(force_refresh))
+        except RuntimeError:
+            # No event loop, create one
+            return asyncio.run(self.select_top3(force_refresh))
 
 
 # Global instance

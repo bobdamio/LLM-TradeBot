@@ -196,10 +196,10 @@ class RiskAuditAgent:
         if is_short and isinstance(t_1h, (int, float)) and isinstance(t_15m, (int, float)) and osc_min is not None:
             if t_1h <= -60 and t_15m <= -20 and osc_min <= -40 and 'uptrend' not in regime_name:
                 short_strong_setup = True
-        # 🔧 OPTIMIZATION Priority 2: Lower SHORT confidence from 85% to 75%
-        short_confidence = confidence >= 75  # Was 85
+        # Phase 3: Lower SHORT confidence from 75% to 60%
+        short_confidence = confidence >= 60  # Phase 3: 75 -> 60
         if is_short and not short_confidence:
-            return self._block_decision('total_blocks', f"空头信心不足({confidence:.1f} < 75)，拦截做空")
+            return self._block_decision('total_blocks', f"空头信心不足({confidence:.1f} < 60)，拦截做空")
         if is_short and not short_strong_setup:
             return self._block_decision('total_blocks', "空头信号未达到强共振条件，拦截做空")
         # 🔧 OPTIMIZATION: Relax symbol-specific filters (was blocking all trades)
@@ -223,13 +223,13 @@ class RiskAuditAgent:
         # Changed from 85% confidence requirement to 75%
         strict_long_symbols = {"FILUSDT", "LINKUSDT"}
         if is_long and symbol_upper in strict_long_symbols:
-            if not long_strong_setup and confidence < 75:  # Lowered from 85%
+            if not long_strong_setup and confidence < 60:  # Phase 3: 75 -> 60
                 return self._block_decision(
                     'total_blocks',
-                    f"{symbol_upper}做多需强信号或高信心(≥75%)"
+                    f"{symbol_upper}做多需强信号或高信心(≥60%)"
                 )
-            elif confidence < 75:
-                warnings.append(f"⚠️ {symbol_upper}做多信心偏低({confidence:.1f}% < 75%)")
+            elif confidence < 60:
+                warnings.append(f"⚠️ {symbol_upper}做多信心偏低({confidence:.1f}% < 60%)")
 
         # 0.3 价格位置拦截 (Position Filter)
         if position:
@@ -243,13 +243,13 @@ class RiskAuditAgent:
 
             if location == 'middle' or 40 <= pos_pct <= 60:
                 if not ((is_short and short_strong_setup and short_pos_pct >= short_pos_threshold) or (is_long and long_strong_setup)):
-                    # 🔧 OPTIMIZATION: Increase middle zone threshold 70% → 75%
-                    if confidence < 75:  # Was 70
+                    # Phase 3: 75% → 60%
+                    if confidence < 60:
                         return self._block_decision('total_blocks', f"价格处于区间中部({pos_pct:.1f}%)，R/R极差，禁止开仓")
                     warnings.append(f"⚠️ 价格处于区间中部({pos_pct:.1f}%)，R/R偏弱，谨慎开仓")
             
             if is_long and pos_pct > 70:
-                if pos_pct > 80 and confidence < 75 and not long_strong_setup:
+                if pos_pct > 80 and confidence < 60 and not long_strong_setup:  # Phase 3: 75 -> 60
                     return self._block_decision('total_blocks', f"做多位置过高({pos_pct:.1f}%)，存在回调风险")
                 warnings.append(f"⚠️ 做多位置偏高({pos_pct:.1f}%)，谨慎开仓")
             
@@ -714,7 +714,7 @@ class RiskAuditAgent:
         if traps.get('weak_rebound'):
             # 弱反弹不一定全拦，但如果是高杠杆或者低信心，则拦截
             confidence = decision.get('confidence', 0)
-            if confidence < 75:
+            if confidence < 60:  # Phase 3: 75 -> 60
                 return {
                     'passed': False,
                     'reason': f"【用户经验风控】弱反弹(缩量)信心不足({confidence:.1f})，禁止做多"
