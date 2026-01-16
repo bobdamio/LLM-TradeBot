@@ -2946,6 +2946,8 @@ def main():
     try:
         log.info("🛠️ Checking/initializing database tables...")
         # 这一步至关重要：它会连接数据库并运行 CREATE TABLE 语句
+        # Lazy import to avoid blocking startup (FIXME at line 112)
+        from src.monitoring.logger import TradingLogger
         _db_init = TradingLogger()
         log.info("✅ Database tables ready")
     except Exception as e:
