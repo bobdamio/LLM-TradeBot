@@ -1005,6 +1005,12 @@ function updateAgentFramework(system, decision, agents) {
                 console.log('📈 K-line chart updated to:', decision.symbol);
             }
         }
+
+        // 🆕 Update current symbol display in framework header
+        const symbolDisplayText = document.getElementById('symbol-display-text');
+        if (symbolDisplayText && decision.symbol) {
+            symbolDisplayText.textContent = decision.symbol;
+        }
     }
 
     // 🆕 Trigger Detector Agent
@@ -2570,4 +2576,122 @@ function renderTradeHistory(trades) {
     });
 
     console.log('✅ Mode toggle initialized');
+})();
+
+// ========================================
+// Agent Selection Panel
+// ========================================
+(function () {
+    const btnApply = document.getElementById('btn-apply-agents');
+    if (!btnApply) return;
+
+    // Map checkbox IDs to agent box IDs for visibility toggle
+    const agentBoxMap = {
+        'predict_agent': 'flow-predict',
+        'ai_prediction_filter_agent': 'flow-ai-filter',
+        'regime_detector_agent': 'flow-regime',
+        'position_analyzer_agent': 'flow-position-analyzer',
+        'trigger_detector_agent': 'flow-trigger-detector',
+        'trend_agent': 'flow-trend-agent',
+        'trigger_agent': 'flow-trigger-agent',
+        'reflection_agent': 'flow-reflection',
+        'symbol_selector_agent': 'flow-symbol-selector'
+    };
+
+    // Function to toggle agent box visibility
+    function updateAgentVisibility() {
+        document.querySelectorAll('input[name="agent-toggle"]').forEach(cb => {
+            const boxId = agentBoxMap[cb.value];
+            const box = document.getElementById(boxId);
+            if (box) {
+                box.style.opacity = cb.checked ? '1' : '0.3';
+                box.style.filter = cb.checked ? 'none' : 'grayscale(100%)';
+            }
+        });
+    }
+
+    // Update visibility on checkbox change
+    document.querySelectorAll('input[name="agent-toggle"]').forEach(cb => {
+        cb.addEventListener('change', updateAgentVisibility);
+    });
+
+    btnApply.addEventListener('click', async function () {
+        // Collect all agent states
+        const agents = {};
+        document.querySelectorAll('input[name="agent-toggle"]').forEach(cb => {
+            agents[cb.value] = cb.checked;
+        });
+
+        console.log('🔧 Applying agent config:', agents);
+
+        // Send to backend
+        try {
+            const response = await apiFetch('/api/agents/config', {
+                method: 'POST',
+                body: JSON.stringify({ agents: agents })
+            });
+
+            // Update visibility
+            updateAgentVisibility();
+
+            // Visual feedback
+            btnApply.textContent = '✅ Applied!';
+            btnApply.style.background = 'var(--nofx-success)';
+            setTimeout(() => {
+                btnApply.textContent = 'Apply Changes';
+                btnApply.style.background = 'var(--nofx-gold)';
+            }, 2000);
+
+            console.log('✅ Agent config saved:', response);
+
+        } catch (err) {
+            console.error('Failed to apply agent config:', err);
+            btnApply.textContent = '❌ Failed';
+            setTimeout(() => {
+                btnApply.textContent = 'Apply Changes';
+            }, 2000);
+        }
+    });
+
+    // Load initial agent config from backend
+    async function loadAgentConfig() {
+        try {
+            const response = await apiFetch('/api/agents/config');
+            if (response && response.agents) {
+                Object.entries(response.agents).forEach(([key, value]) => {
+                    const cb = document.querySelector(`input[name="agent-toggle"][value="${key}"]`);
+                    if (cb) cb.checked = value;
+                });
+                updateAgentVisibility();
+                console.log('📋 Agent config loaded from backend');
+            }
+        } catch (err) {
+            console.log('Could not load agent config:', err);
+        }
+    }
+
+    // Load config on page load
+    setTimeout(loadAgentConfig, 1000);
+
+    console.log('✅ Agent selection panel initialized');
+})();
+
+// ========================================
+// Update Current Symbol Display
+// ========================================
+(function () {
+    // Override or extend existing update logic
+    const originalUpdate = window.handleStateUpdate;
+    window.handleStateUpdate = function (data) {
+        // Call original if exists
+        if (originalUpdate) originalUpdate(data);
+
+        // Update symbol display
+        if (data && data.decision && data.decision.symbol) {
+            const symbolText = document.getElementById('symbol-display-text');
+            if (symbolText) {
+                symbolText.textContent = data.decision.symbol;
+            }
+        }
+    };
 })();

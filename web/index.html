@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM-TradeBot Dashboard</title>
-    <link rel="stylesheet" href="./style.css?v=nofx_gold_v4">
-    <link rel="stylesheet" href="./style-enhancements.css?v=5">
+    <link rel="stylesheet" href="/static/style.css?v=20260117_0255">
+    <link rel="stylesheet" href="/static/style-enhancements.css?v=20260117_0247">
     <link
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;600&display=swap"
         rel="stylesheet">
@@ -179,296 +179,379 @@
                         <h2>🤖 Multi-Agent Decision Framework</h2>
                         <div class="framework-controls">
                             <span id="framework-cycle" class="cycle-badge">Cycle #0</span>
-                            <select id="symbol-selector" class="symbol-select">
-                                <option value="" disabled selected>Loading...</option>
-                            </select>
+                            <span id="current-symbol-display" class="current-symbol-badge"
+                                title="AUTO1 selected symbol">
+                                📊 <span id="symbol-display-text">--</span>
+                            </span>
                             <button id="btn-demo-flow" class="demo-flow-btn">▶️ Demo Flow</button>
                         </div>
                     </div>
 
-                    <!-- Agent Flow Diagram -->
-                    <div class="agent-flow-container">
-                        <!-- Layer 1: Data Layer -->
-                        <div class="flow-layer" data-layer="data">
-                            <div class="layer-label">📡 Data Layer</div>
-                            <div class="layer-agents">
-                                <div class="agent-box" id="flow-datasync">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">🕵️</span>
-                                        <span class="agent-title">DataSync Agent</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">5m:</span><span
-                                                class="output-value" id="out-5m">--</span></div>
-                                        <div class="output-row"><span class="output-label">15m:</span><span
-                                                class="output-value" id="out-15m">--</span></div>
-                                        <div class="output-row"><span class="output-label">1h:</span><span
-                                                class="output-value" id="out-1h">--</span></div>
-                                        <div class="output-row"><span class="output-label">OI:</span><span
-                                                class="output-value" id="out-oi">--</span></div>
-                                    </div>
-                                </div>
-                                <div class="agent-box" id="flow-symbol-selector">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">🎰</span>
-                                        <span class="agent-title">Symbol Selector</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">Mode:</span><span
-                                                class="output-value" id="out-selector-mode">AUTO1</span></div>
-                                        <div class="output-row"><span class="output-label">Symbol:</span><span
-                                                class="output-value" id="out-selector-symbol">--</span></div>
-                                        <div class="output-row"><span class="output-label">Score:</span><span
-                                                class="output-value" id="out-selector-score">--</span></div>
-                                    </div>
-                                </div>
+                    <!-- Agent Framework Layout: Selection Panel + Flow Diagram -->
+                    <div class="agent-framework-layout" style="display: flex; gap: 16px;">
+
+                        <!-- Left: Optional Agent Selection Panel -->
+                        <div class="agent-selection-panel glass-panel"
+                            style="min-width: 200px; padding: 12px; border-radius: 8px;">
+                            <h3
+                                style="font-size: 0.9rem; color: var(--nofx-gold); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                ⚙️ Optional Agents
+                            </h3>
+                            <div class="agent-checkbox-list" style="display: flex; flex-direction: column; gap: 8px;">
+                                <!-- ML/AI Prediction -->
+                                <label class="agent-checkbox-item">
+                                    <input type="checkbox" id="cfg-predict-agent" name="agent-toggle"
+                                        value="predict_agent" checked>
+                                    <span class="checkbox-label">🔮 Predict Agent</span>
+                                </label>
+                                <label class="agent-checkbox-item">
+                                    <input type="checkbox" id="cfg-ai-filter-agent" name="agent-toggle"
+                                        value="ai_prediction_filter_agent" checked>
+                                    <span class="checkbox-label">🤖 AI Filter</span>
+                                </label>
+
+                                <!-- Market Analysis -->
+                                <label class="agent-checkbox-item">
+                                    <input type="checkbox" id="cfg-regime-agent" name="agent-toggle"
+                                        value="regime_detector_agent" checked>
+                                    <span class="checkbox-label">📊 Regime Detector</span>
+                                </label>
+                                <label class="agent-checkbox-item">
+                                    <input type="checkbox" id="cfg-position-agent" name="agent-toggle"
+                                        value="position_analyzer_agent">
+                                    <span class="checkbox-label">📍 Position Analyzer</span>
+                                </label>
+
+                                <!-- Trigger Detection -->
+                                <label class="agent-checkbox-item">
+                                    <input type="checkbox" id="cfg-trigger-detector" name="agent-toggle"
+                                        value="trigger_detector_agent" checked>
+                                    <span class="checkbox-label">⚡ Trigger Detector</span>
+                                </label>
+
+                                <!-- LLM Analysis (expensive) -->
+                                <label class="agent-checkbox-item" title="LLM analysis - higher cost">
+                                    <input type="checkbox" id="cfg-trend-agent" name="agent-toggle" value="trend_agent">
+                                    <span class="checkbox-label">📈 Trend Agent <span
+                                            style="color: #F0B90B; font-size: 0.7em;">💰</span></span>
+                                </label>
+                                <label class="agent-checkbox-item" title="LLM analysis - higher cost">
+                                    <input type="checkbox" id="cfg-trigger-agent" name="agent-toggle"
+                                        value="trigger_agent">
+                                    <span class="checkbox-label">🎯 Trigger Agent <span
+                                            style="color: #F0B90B; font-size: 0.7em;">💰</span></span>
+                                </label>
+
+                                <!-- Reflection -->
+                                <label class="agent-checkbox-item">
+                                    <input type="checkbox" id="cfg-reflection-agent" name="agent-toggle"
+                                        value="reflection_agent" checked>
+                                    <span class="checkbox-label">🧠 Reflection Agent</span>
+                                </label>
+
+                                <!-- Symbol Selection -->
+                                <label class="agent-checkbox-item">
+                                    <input type="checkbox" id="cfg-symbol-selector" name="agent-toggle"
+                                        value="symbol_selector_agent">
+                                    <span class="checkbox-label">🔝 Symbol Selector</span>
+                                </label>
                             </div>
-                            <div class="flow-connector vertical">
-                                <div class="flow-line"></div>
-                                <div class="flow-particles" id="particles-data"></div>
+
+                            <div
+                                style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <button id="btn-apply-agents" class="apply-agents-btn"
+                                    style="width: 100%; padding: 8px; background: var(--nofx-gold); color: #000; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">
+                                    Apply Changes
+                                </button>
                             </div>
                         </div>
 
-                        <!-- Layer 2: Analysis Layer -->
-                        <div class="flow-layer" data-layer="analysis">
-                            <div class="layer-label">📊 Analysis Layer</div>
-                            <div class="layer-agents">
-                                <div class="agent-box" id="flow-quant">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">👨‍🔬</span>
-                                        <span class="agent-title">Quant Analyst</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">EMA:</span><span
-                                                class="output-value" id="out-ema">--</span></div>
-                                        <div class="output-row"><span class="output-label">RSI:</span><span
-                                                class="output-value" id="out-rsi">--</span></div>
-                                        <div class="output-row"><span class="output-label">MACD:</span><span
-                                                class="output-value" id="out-macd">--</span></div>
-                                        <div class="output-row"><span class="output-label">BB:</span><span
-                                                class="output-value" id="out-bb">--</span></div>
-                                    </div>
-                                </div>
-                                <div class="agent-box" id="flow-regime">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">🔮</span>
-                                        <span class="agent-title">Regime Detector</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">State:</span><span
-                                                class="output-value" id="out-regime">--</span></div>
-                                        <div class="output-row"><span class="output-label">ADX:</span><span
-                                                class="output-value" id="out-adx">--</span></div>
-                                        <div class="output-row"><span class="output-label">Conf:</span><span
-                                                class="output-value" id="out-regime-conf">--</span></div>
-                                    </div>
-                                </div>
-                                <div class="agent-box" id="flow-trigger-detector">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">⚡</span>
-                                        <span class="agent-title">Trigger Detector</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">Pattern:</span><span
-                                                class="output-value" id="out-pattern">--</span></div>
-                                        <div class="output-row"><span class="output-label">Signal:</span><span
-                                                class="output-value" id="out-trigger-signal">--</span></div>
-                                        <div class="output-row"><span class="output-label">Score:</span><span
-                                                class="output-value" id="out-trigger-score">--</span></div>
-                                    </div>
-                                </div>
-                                <div class="agent-box" id="flow-position-analyzer">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">📍</span>
-                                        <span class="agent-title">Position Analyzer</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">Zone:</span><span
-                                                class="output-value" id="out-zone">--</span></div>
-                                        <div class="output-row"><span class="output-label">S/R:</span><span
-                                                class="output-value" id="out-sr">--</span></div>
-                                        <div class="output-row"><span class="output-label">Range:</span><span
-                                                class="output-value" id="out-range">--</span></div>
-                                    </div>
-                                </div>
-                                <div class="agent-box" id="flow-predict">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">🎯</span>
-                                        <span class="agent-title">Predict Agent</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">P(Up):</span><span
-                                                class="output-value bullish" id="out-pup">--%</span></div>
-                                        <div class="output-row"><span class="output-label">P(Down):</span><span
-                                                class="output-value bearish" id="out-pdown">--%</span></div>
-                                        <div class="output-row"><span class="output-label">Signal:</span><span
-                                                class="output-value" id="out-signal">--</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flow-connector vertical merge">
-                                <div class="flow-line"></div>
-                                <div class="flow-particles" id="particles-analysis"></div>
-                            </div>
-                        </div>
-
-                        <!-- Layer 2.5: LLM Strategy Layer -->
-                        <div class="flow-layer" data-layer="strategy">
-                            <div class="layer-label">🧠 LLM Strategy Layer</div>
-                            <div class="layer-agents">
-                                <div class="agent-box" id="flow-trend-agent">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">📈</span>
-                                        <span class="agent-title">Trend Agent</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">1h Trend:</span><span
-                                                class="output-value" id="out-trend-1h">--</span></div>
-                                        <div class="output-row"><span class="output-label">Bias:</span><span
-                                                class="output-value" id="out-trend-bias">--</span></div>
-                                        <div class="output-row"><span class="output-label">Conf:</span><span
-                                                class="output-value" id="out-trend-conf">--</span></div>
-                                    </div>
-                                </div>
-                                <div class="agent-box" id="flow-trigger-agent">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">🔥</span>
-                                        <span class="agent-title">Trigger Agent</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">5m Fire:</span><span
-                                                class="output-value" id="out-fire">--</span></div>
-                                        <div class="output-row"><span class="output-label">Entry:</span><span
-                                                class="output-value" id="out-entry-type">--</span></div>
-                                        <div class="output-row"><span class="output-label">Conf:</span><span
-                                                class="output-value" id="out-fire-conf">--</span></div>
-                                    </div>
-                                </div>
-                                <div class="agent-box" id="flow-ai-filter">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">🚫</span>
-                                        <span class="agent-title">AI Filter</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">Status:</span><span
-                                                class="output-value" id="out-ai-status">--</span></div>
-                                        <div class="output-row"><span class="output-label">Veto:</span><span
-                                                class="output-value" id="out-ai-veto">--</span></div>
-                                        <div class="output-row"><span class="output-label">Reason:</span><span
-                                                class="output-value" id="out-ai-reason">--</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flow-connector vertical">
-                                <div class="flow-line"></div>
-                                <div class="flow-particles" id="particles-strategy"></div>
-                            </div>
-                        </div>
-
-                        <!-- Layer 3: Decision Layer -->
-                        <div class="flow-layer" data-layer="decision">
-                            <div class="layer-label">⚖️ Decision Layer</div>
-                            <div class="layer-agents">
-                                <div class="agent-box decision-core" id="flow-decision">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">⚖️</span>
-                                        <span class="agent-title">Decision Core</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output decision-output">
-                                        <div class="decision-result" id="out-decision">
-                                            <span class="decision-action">WAIT</span>
-                                            <span class="decision-conf">0%</span>
+                        <!-- Right: Agent Flow Diagram -->
+                        <div class="agent-flow-container" style="flex: 1;">
+                            <!-- Layer 1: Data Layer -->
+                            <div class="flow-layer" data-layer="data">
+                                <div class="layer-label">📡 Data Layer</div>
+                                <div class="layer-agents">
+                                    <div class="agent-box" id="flow-datasync">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">🕵️</span>
+                                            <span class="agent-title">DataSync Agent</span>
+                                            <span class="agent-badge idle">Idle</span>
                                         </div>
-                                        <div class="decision-votes">
-                                            <div class="vote-item"><span>🐂 Bull:</span><span id="out-bull">--</span>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">5m:</span><span
+                                                    class="output-value" id="out-5m">--</span></div>
+                                            <div class="output-row"><span class="output-label">15m:</span><span
+                                                    class="output-value" id="out-15m">--</span></div>
+                                            <div class="output-row"><span class="output-label">1h:</span><span
+                                                    class="output-value" id="out-1h">--</span></div>
+                                            <div class="output-row"><span class="output-label">OI:</span><span
+                                                    class="output-value" id="out-oi">--</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-box" id="flow-symbol-selector">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">🎰</span>
+                                            <span class="agent-title">Symbol Selector</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">Mode:</span><span
+                                                    class="output-value" id="out-selector-mode">AUTO1</span></div>
+                                            <div class="output-row"><span class="output-label">Symbol:</span><span
+                                                    class="output-value" id="out-selector-symbol">--</span></div>
+                                            <div class="output-row"><span class="output-label">Score:</span><span
+                                                    class="output-value" id="out-selector-score">--</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flow-connector vertical">
+                                    <div class="flow-line"></div>
+                                    <div class="flow-particles" id="particles-data"></div>
+                                </div>
+                            </div>
+
+                            <!-- Layer 2: Analysis Layer -->
+                            <div class="flow-layer" data-layer="analysis">
+                                <div class="layer-label">📊 Analysis Layer</div>
+                                <div class="layer-agents">
+                                    <div class="agent-box" id="flow-quant">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">👨‍🔬</span>
+                                            <span class="agent-title">Quant Analyst</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">EMA:</span><span
+                                                    class="output-value" id="out-ema">--</span></div>
+                                            <div class="output-row"><span class="output-label">RSI:</span><span
+                                                    class="output-value" id="out-rsi">--</span></div>
+                                            <div class="output-row"><span class="output-label">MACD:</span><span
+                                                    class="output-value" id="out-macd">--</span></div>
+                                            <div class="output-row"><span class="output-label">BB:</span><span
+                                                    class="output-value" id="out-bb">--</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-box" id="flow-regime">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">🔮</span>
+                                            <span class="agent-title">Regime Detector</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">State:</span><span
+                                                    class="output-value" id="out-regime">--</span></div>
+                                            <div class="output-row"><span class="output-label">ADX:</span><span
+                                                    class="output-value" id="out-adx">--</span></div>
+                                            <div class="output-row"><span class="output-label">Conf:</span><span
+                                                    class="output-value" id="out-regime-conf">--</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-box" id="flow-trigger-detector">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">⚡</span>
+                                            <span class="agent-title">Trigger Detector</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">Pattern:</span><span
+                                                    class="output-value" id="out-pattern">--</span></div>
+                                            <div class="output-row"><span class="output-label">Signal:</span><span
+                                                    class="output-value" id="out-trigger-signal">--</span></div>
+                                            <div class="output-row"><span class="output-label">Score:</span><span
+                                                    class="output-value" id="out-trigger-score">--</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-box" id="flow-position-analyzer">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">📍</span>
+                                            <span class="agent-title">Position Analyzer</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">Zone:</span><span
+                                                    class="output-value" id="out-zone">--</span></div>
+                                            <div class="output-row"><span class="output-label">S/R:</span><span
+                                                    class="output-value" id="out-sr">--</span></div>
+                                            <div class="output-row"><span class="output-label">Range:</span><span
+                                                    class="output-value" id="out-range">--</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-box" id="flow-predict">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">🎯</span>
+                                            <span class="agent-title">Predict Agent</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">P(Up):</span><span
+                                                    class="output-value bullish" id="out-pup">--%</span></div>
+                                            <div class="output-row"><span class="output-label">P(Down):</span><span
+                                                    class="output-value bearish" id="out-pdown">--%</span></div>
+                                            <div class="output-row"><span class="output-label">Signal:</span><span
+                                                    class="output-value" id="out-signal">--</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flow-connector vertical merge">
+                                    <div class="flow-line"></div>
+                                    <div class="flow-particles" id="particles-analysis"></div>
+                                </div>
+                            </div>
+
+                            <!-- Layer 2.5: LLM Strategy Layer -->
+                            <div class="flow-layer" data-layer="strategy">
+                                <div class="layer-label">🧠 LLM Strategy Layer</div>
+                                <div class="layer-agents">
+                                    <div class="agent-box" id="flow-trend-agent">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">📈</span>
+                                            <span class="agent-title">Trend Agent</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">1h Trend:</span><span
+                                                    class="output-value" id="out-trend-1h">--</span></div>
+                                            <div class="output-row"><span class="output-label">Bias:</span><span
+                                                    class="output-value" id="out-trend-bias">--</span></div>
+                                            <div class="output-row"><span class="output-label">Conf:</span><span
+                                                    class="output-value" id="out-trend-conf">--</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-box" id="flow-trigger-agent">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">🔥</span>
+                                            <span class="agent-title">Trigger Agent</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">5m Fire:</span><span
+                                                    class="output-value" id="out-fire">--</span></div>
+                                            <div class="output-row"><span class="output-label">Entry:</span><span
+                                                    class="output-value" id="out-entry-type">--</span></div>
+                                            <div class="output-row"><span class="output-label">Conf:</span><span
+                                                    class="output-value" id="out-fire-conf">--</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-box" id="flow-ai-filter">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">🚫</span>
+                                            <span class="agent-title">AI Filter</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">Status:</span><span
+                                                    class="output-value" id="out-ai-status">--</span></div>
+                                            <div class="output-row"><span class="output-label">Veto:</span><span
+                                                    class="output-value" id="out-ai-veto">--</span></div>
+                                            <div class="output-row"><span class="output-label">Reason:</span><span
+                                                    class="output-value" id="out-ai-reason">--</span></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flow-connector vertical">
+                                    <div class="flow-line"></div>
+                                    <div class="flow-particles" id="particles-strategy"></div>
+                                </div>
+                            </div>
+
+                            <!-- Layer 3: Decision Layer -->
+                            <div class="flow-layer" data-layer="decision">
+                                <div class="layer-label">⚖️ Decision Layer</div>
+                                <div class="layer-agents">
+                                    <div class="agent-box decision-core" id="flow-decision">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">⚖️</span>
+                                            <span class="agent-title">Decision Core</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output decision-output">
+                                            <div class="decision-result" id="out-decision">
+                                                <span class="decision-action">WAIT</span>
+                                                <span class="decision-conf">0%</span>
                                             </div>
-                                            <div class="vote-item"><span>🐻 Bear:</span><span id="out-bear">--</span>
+                                            <div class="decision-votes">
+                                                <div class="vote-item"><span>🐂 Bull:</span><span
+                                                        id="out-bull">--</span>
+                                                </div>
+                                                <div class="vote-item"><span>🐻 Bear:</span><span
+                                                        id="out-bear">--</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="flow-connector vertical">
-                                <div class="flow-line"></div>
-                                <div class="flow-particles" id="particles-decision"></div>
-                            </div>
-                        </div>
-
-                        <!-- Layer 4: Execution Layer -->
-                        <div class="flow-layer" data-layer="execution">
-                            <div class="layer-label">🛡️ Execution Layer</div>
-                            <div class="layer-agents">
-                                <div class="agent-box" id="flow-risk">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">🛡️</span>
-                                        <span class="agent-title">Risk Audit</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">Risk:</span><span
-                                                class="output-value" id="out-risk">--</span></div>
-                                        <div class="output-row"><span class="output-label">Size:</span><span
-                                                class="output-value" id="out-size">--</span></div>
-                                        <div class="output-row"><span class="output-label">SL:</span><span
-                                                class="output-value" id="out-sl">--</span></div>
-                                        <div class="output-row"><span class="output-label">TP:</span><span
-                                                class="output-value" id="out-tp">--</span></div>
-                                    </div>
+                                <div class="flow-connector vertical">
+                                    <div class="flow-line"></div>
+                                    <div class="flow-particles" id="particles-decision"></div>
                                 </div>
-                                <div class="agent-box final-output" id="flow-output">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">📤</span>
-                                        <span class="agent-title">Final Output</span>
+                            </div>
+
+                            <!-- Layer 4: Execution Layer -->
+                            <div class="flow-layer" data-layer="execution">
+                                <div class="layer-label">🛡️ Execution Layer</div>
+                                <div class="layer-agents">
+                                    <div class="agent-box" id="flow-risk">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">🛡️</span>
+                                            <span class="agent-title">Risk Audit</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">Risk:</span><span
+                                                    class="output-value" id="out-risk">--</span></div>
+                                            <div class="output-row"><span class="output-label">Size:</span><span
+                                                    class="output-value" id="out-size">--</span></div>
+                                            <div class="output-row"><span class="output-label">SL:</span><span
+                                                    class="output-value" id="out-sl">--</span></div>
+                                            <div class="output-row"><span class="output-label">TP:</span><span
+                                                    class="output-value" id="out-tp">--</span></div>
+                                        </div>
                                     </div>
-                                    <div class="final-result" id="out-final">
-                                        <div class="final-action">--</div>
-                                        <div class="final-details">
-                                            <span id="final-symbol">--</span>
-                                            <span id="final-size">--</span>
+                                    <div class="agent-box final-output" id="flow-output">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">📤</span>
+                                            <span class="agent-title">Final Output</span>
+                                        </div>
+                                        <div class="final-result" id="out-final">
+                                            <div class="final-action">--</div>
+                                            <div class="final-details">
+                                                <span id="final-symbol">--</span>
+                                                <span id="final-size">--</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="agent-box" id="flow-reflection">
+                                        <div class="agent-header">
+                                            <span class="agent-emoji">🪞</span>
+                                            <span class="agent-title">Reflection Agent</span>
+                                            <span class="agent-badge idle">Idle</span>
+                                        </div>
+                                        <div class="agent-output">
+                                            <div class="output-row"><span class="output-label">Trades:</span><span
+                                                    class="output-value" id="out-trades-count">--</span></div>
+                                            <div class="output-row"><span class="output-label">Win Rate:</span><span
+                                                    class="output-value" id="out-win-rate">--</span></div>
+                                            <div class="output-row"><span class="output-label">Insight:</span><span
+                                                    class="output-value" id="out-insight">--</span></div>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="agent-box" id="flow-reflection">
-                                    <div class="agent-header">
-                                        <span class="agent-emoji">🪞</span>
-                                        <span class="agent-title">Reflection Agent</span>
-                                        <span class="agent-badge idle">Idle</span>
-                                    </div>
-                                    <div class="agent-output">
-                                        <div class="output-row"><span class="output-label">Trades:</span><span
-                                                class="output-value" id="out-trades-count">--</span></div>
-                                        <div class="output-row"><span class="output-label">Win Rate:</span><span
-                                                class="output-value" id="out-win-rate">--</span></div>
-                                        <div class="output-row"><span class="output-label">Insight:</span><span
-                                                class="output-value" id="out-insight">--</span></div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Data Flow Legend -->
-                    <div class="flow-legend">
-                        <div class="legend-item"><span class="legend-dot idle"></span>Idle</div>
-                        <div class="legend-item"><span class="legend-dot running"></span>Running</div>
-                        <div class="legend-item"><span class="legend-dot completed"></span>Completed</div>
-                        <div class="legend-item"><span class="legend-dot long"></span>LONG</div>
-                        <div class="legend-item"><span class="legend-dot short"></span>SHORT</div>
-                        <button onclick="window.resetAgentPositions()" class="reset-positions-btn"
-                            title="Reset agent positions to default">🔄 Reset Layout</button>
-                    </div>
-                </div>
+                        <!-- Data Flow Legend -->
+                        <div class="flow-legend">
+                            <div class="legend-item"><span class="legend-dot idle"></span>Idle</div>
+                            <div class="legend-item"><span class="legend-dot running"></span>Running</div>
+                            <div class="legend-item"><span class="legend-dot completed"></span>Completed</div>
+                            <div class="legend-item"><span class="legend-dot long"></span>LONG</div>
+                            <div class="legend-item"><span class="legend-dot short"></span>SHORT</div>
+                            <button onclick="window.resetAgentPositions()" class="reset-positions-btn"
+                                title="Reset agent positions to default">🔄 Reset Layout</button>
+                        </div>
+                    </div> <!-- End agent-framework-layout -->
+                </div> <!-- End agent-framework-card -->
             </section>
 
             <!-- Row 2: Agent Activity Feed -->
@@ -1134,7 +1217,7 @@
         }
     </style>
     </style>
-    <script src="/static/app.js?v=nofx_gold_v4"></script>
+    <script src="/static/app.js?v=20260117_0259"></script>
     <script>
         // EMERGENCY FIX & LOGIC V3
         (function () {
