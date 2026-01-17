@@ -373,11 +373,12 @@ class MultiAgentTradingBot:
             # Update global state
             global_state.symbols = self.symbols
             # Initialize PredictAgent for any new symbols
-            for symbol in self.symbols:
-                if symbol not in self.predict_agents:
-                    from src.agents.predict_agent import PredictAgent
-                    self.predict_agents[symbol] = PredictAgent(symbol=symbol)
-                    log.info(f"🆕 Initialized PredictAgent for {symbol}")
+            if self.agent_config.predict_agent:
+                for symbol in self.symbols:
+                    if symbol not in self.predict_agents:
+                        from src.agents.predict_agent import PredictAgent
+                        self.predict_agents[symbol] = PredictAgent(symbol=symbol)
+                        log.info(f"🆕 Initialized PredictAgent for {symbol}")
 
     def _apply_agent_config(self, agents: Dict[str, bool]) -> None:
         """Apply runtime agent config and sync optional agent instances."""
@@ -385,6 +386,7 @@ class MultiAgentTradingBot:
 
         self.agent_config = AgentConfig.from_dict({'agents': agents})
         self._last_agent_config = dict(agents)
+        global_state.agent_config = self.agent_config.get_enabled_agents()
 
         # Optional Agent: RegimeDetector
         if self.agent_config.regime_detector_agent:
@@ -434,6 +436,32 @@ class MultiAgentTradingBot:
         semantic_analyses = getattr(global_state, 'semantic_analyses', None)
         if semantic_analyses:
             decision_dict['semantic_analyses'] = semantic_analyses
+
+        reflection_text = getattr(global_state, 'last_reflection_text', None)
+        reflection_count = getattr(global_state, 'reflection_count', 0)
+        trades = getattr(global_state, 'trade_history', []) or []
+        pnl_values = []
+        for trade in trades:
+            if not isinstance(trade, dict):
+                continue
+            pnl = trade.get('pnl', trade.get('realized_pnl'))
+            if pnl is None:
+                continue
+            try:
+                pnl_values.append(float(pnl))
+            except (TypeError, ValueError):
+                continue
+        win_rate = None
+        if pnl_values:
+            wins = sum(1 for v in pnl_values if v > 0)
+            win_rate = (wins / len(pnl_values)) * 100
+        if reflection_text or reflection_count or pnl_values:
+            decision_dict['reflection'] = {
+                'count': reflection_count,
+                'text': reflection_text,
+                'trades': len(pnl_values),
+                'win_rate': win_rate
+            }
 
     def _resolve_ai500_symbols(self):
         """Dynamic resolution of AI500_TOP5 tag"""
@@ -1460,7 +1488,7 @@ class MultiAgentTradingBot:
             # 🧠 Check if reflection is needed (every 10 trades)
             reflection_text = None
             total_trades = len(global_state.trade_history)
-            if self.reflection_agent.should_reflect(total_trades):
+            if self.reflection_agent and self.reflection_agent.should_reflect(total_trades):
                 log.info(f"🧠 Triggering reflection after {total_trades} trades...")
                 trades_to_analyze = global_state.trade_history[-10:]
                 reflection_result = await self.reflection_agent.generate_reflection(trades_to_analyze)
@@ -2740,6 +2768,13 @@ class MultiAgentTradingBot:
                 if global_state.config_changed:
                     log.info("⚙️ Runtime config change detected, reloading symbols...")
                     self._reload_symbols()
+                    # Re-evaluate agent config from env/config on runtime updates
+                    from src.agents.agent_config import AgentConfig
+                    refreshed = AgentConfig.from_dict({'agents': self.config.get('agents', {})})
+                    refreshed_map = refreshed.get_enabled_agents()
+                    if refreshed_map != self._last_agent_config:
+                        log.info(f"🔧 Runtime agent config refreshed: {refreshed_map}")
+                        self._apply_agent_config(refreshed_map)
                     global_state.config_changed = False  # Reset flag
                 
                 runtime_agents = getattr(global_state, 'agent_config', None)

@@ -936,7 +936,8 @@ function updateAgentFramework(system, decision, agents) {
         setOutput('out-5m', '✓');
         setOutput('out-15m', '✓');
         setOutput('out-1h', '✓');
-        setOutput('out-oi', '✓');
+        const oiChange = decision.four_layer_status?.oi_change;
+        setOutput('out-oi', oiChange !== undefined && oiChange !== null ? `${oiChange.toFixed(1)}%` : '✓');
     }
 
     // Quant Analyst - Show indicators from decision
@@ -1175,6 +1176,15 @@ function updateAgentFramework(system, decision, agents) {
         setOutput('out-trades-count', '--');
         setOutput('out-win-rate', '--');
         setOutput('out-insight', '--');
+    } else if (decision.reflection) {
+        setAgentStatus('flow-reflection', 'Done');
+        const tradesCount = decision.reflection.trades;
+        const winRate = decision.reflection.win_rate;
+        const insightRaw = decision.reflection.text || '';
+        const insight = insightRaw ? `${insightRaw}`.split('\n')[0].slice(0, 80) : '--';
+        setOutput('out-trades-count', tradesCount !== undefined && tradesCount !== null ? `${tradesCount}` : '--');
+        setOutput('out-win-rate', winRate !== undefined && winRate !== null ? `${winRate.toFixed(1)}%` : '--');
+        setOutput('out-insight', insight || '--');
     } else {
         setAgentStatus('flow-reflection', 'Idle');
         setOutput('out-trades-count', '--');
