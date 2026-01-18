@@ -83,7 +83,10 @@ class ConfigManager:
                         flat_updates[key_map[k]] = str(v)
 
             if not flat_updates:
-                return True  # Nothing to update
+                agents_update = updates.get('agents')
+                if isinstance(agents_update, dict):
+                    self._update_agents_config(agents_update)
+                return True  # Nothing else to update
             
             # === Railway Mode: Apply to runtime environment ===
             if railway_mode or self.is_railway:

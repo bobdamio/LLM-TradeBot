@@ -417,44 +417,44 @@ async def update_config_endpoint(data: dict = Body(...), authenticated: bool = D
 async def update_agent_config(data: dict = Body(...), authenticated: bool = Depends(verify_auth)):
     """Update agent enable/disable configuration"""
     agents = data.get("agents", {})
-    
-    if not agents:
+
+    if not agents or not isinstance(agents, dict):
         raise HTTPException(status_code=400, detail="No agent configuration provided")
-    
+
+    # Filter/normalize keys and merge with persisted defaults
+    from src.agents.agent_config import AgentConfig
+    valid_keys = set(AgentConfig().get_enabled_agents().keys())
+    filtered = {k: bool(v) for k, v in agents.items() if k in valid_keys}
+    if not filtered:
+        raise HTTPException(status_code=400, detail="No valid agent configuration provided")
+
+    current = getattr(global_state, 'agent_config', None) or config_manager._get_agents_config()
+    merged = {**current, **filtered}
+
     # Update global state with new agent config
-    global_state.agent_config = agents
+    global_state.agent_config = merged
+    # Persist to config.yaml for next restart and export env flags
+    config_manager._update_agents_config(merged)
     
     # Log the change
-    enabled = [k for k, v in agents.items() if v]
-    disabled = [k for k, v in agents.items() if not v]
+    enabled = [k for k, v in merged.items() if v]
+    disabled = [k for k, v in merged.items() if not v]
     global_state.add_log(f"🔧 Agent config updated: {len(enabled)} enabled, {len(disabled)} disabled")
     
     return {
         "status": "success",
         "message": f"Agent configuration updated. Enabled: {', '.join(enabled) if enabled else 'none'}",
-        "agents": agents
+        "agents": merged
     }
 
 @app.get("/api/agents/config")
 async def get_agent_config(authenticated: bool = Depends(verify_auth)):
     """Get current agent configuration"""
     # Return current agent config from global state
-    agents = getattr(global_state, 'agent_config', {
-        'predict_agent': True,
-        'ai_prediction_filter_agent': True,
-        'regime_detector_agent': True,
-        'position_analyzer_agent': False,
-        'trigger_detector_agent': True,
-        'trend_agent_llm': False,
-        'setup_agent_llm': False,
-        'trigger_agent_llm': False,
-        'trend_agent_local': True,
-        'setup_agent_local': True,
-        'trigger_agent_local': True,
-        'reflection_agent_llm': False,
-        'reflection_agent_local': True,
-        'symbol_selector_agent': False
-    })
+    agents = getattr(global_state, 'agent_config', None)
+    if not agents:
+        agents = config_manager._get_agents_config()
+        global_state.agent_config = agents
     return {"agents": agents}
 
 @app.post("/api/config/prompt")
