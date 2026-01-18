@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM-TradeBot Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=20260117_0710">
-    <link rel="stylesheet" href="/static/style-enhancements.css?v=20260117_0710">
+    <link rel="stylesheet" href="/static/style.css?v=20260117_0750">
+    <link rel="stylesheet" href="/static/style-enhancements.css?v=20260117_0750">
     <link
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;600&display=swap"
         rel="stylesheet">
@@ -192,74 +192,6 @@
 
                     <!-- Agent Framework Layout: Selection Panel + Flow Diagram -->
                     <div class="agent-framework-layout framework-grid">
-
-                        <!-- Left: Optional Agent Selection Panel -->
-                        <div class="agent-selection-panel glass-panel">
-                            <h3 class="agent-selection-title">⚙️ Optional Agents</h3>
-                            <div class="agent-checkbox-list">
-                                <!-- ML/AI Prediction -->
-                                <label class="agent-checkbox-item">
-                                    <input type="checkbox" id="cfg-predict-agent" name="agent-toggle"
-                                        value="predict_agent" checked>
-                                    <span class="checkbox-label">🔮 Predict Agent</span>
-                                </label>
-                                <label class="agent-checkbox-item">
-                                    <input type="checkbox" id="cfg-ai-filter-agent" name="agent-toggle"
-                                        value="ai_prediction_filter_agent" checked>
-                                    <span class="checkbox-label">🤖 AI Filter</span>
-                                </label>
-
-                                <!-- Market Analysis -->
-                                <label class="agent-checkbox-item">
-                                    <input type="checkbox" id="cfg-regime-agent" name="agent-toggle"
-                                        value="regime_detector_agent" checked>
-                                    <span class="checkbox-label">📊 Regime Detector</span>
-                                </label>
-                                <label class="agent-checkbox-item">
-                                    <input type="checkbox" id="cfg-position-agent" name="agent-toggle"
-                                        value="position_analyzer_agent">
-                                    <span class="checkbox-label">📍 Position Analyzer</span>
-                                </label>
-
-                                <!-- Trigger Detection -->
-                                <label class="agent-checkbox-item">
-                                    <input type="checkbox" id="cfg-trigger-detector" name="agent-toggle"
-                                        value="trigger_detector_agent" checked>
-                                    <span class="checkbox-label">⚡ Trigger Detector</span>
-                                </label>
-
-                                <!-- LLM Analysis (expensive) -->
-                                <label class="agent-checkbox-item" title="LLM analysis - higher cost">
-                                    <input type="checkbox" id="cfg-trend-agent" name="agent-toggle" value="trend_agent">
-                                    <span class="checkbox-label">📈 Trend Agent <span
-                                            style="color: #F0B90B; font-size: 0.7em;">💰</span></span>
-                                </label>
-                                <label class="agent-checkbox-item" title="LLM analysis - higher cost">
-                                    <input type="checkbox" id="cfg-trigger-agent" name="agent-toggle"
-                                        value="trigger_agent">
-                                    <span class="checkbox-label">🎯 Trigger Agent <span
-                                            style="color: #F0B90B; font-size: 0.7em;">💰</span></span>
-                                </label>
-
-                                <!-- Reflection -->
-                                <label class="agent-checkbox-item">
-                                    <input type="checkbox" id="cfg-reflection-agent" name="agent-toggle"
-                                        value="reflection_agent" checked>
-                                    <span class="checkbox-label">🧠 Reflection Agent</span>
-                                </label>
-
-                                <!-- Symbol Selection -->
-                                <label class="agent-checkbox-item">
-                                    <input type="checkbox" id="cfg-symbol-selector" name="agent-toggle"
-                                        value="symbol_selector_agent">
-                                    <span class="checkbox-label">🔝 Symbol Selector</span>
-                                </label>
-                            </div>
-
-                            <div class="agent-selection-actions">
-                                <button id="btn-apply-agents" class="apply-agents-btn">Apply Changes</button>
-                            </div>
-                        </div>
 
                         <!-- Right: Agent Flow Diagram -->
                         <div class="agent-flow-container">
@@ -1236,7 +1168,7 @@
         }
     </style>
     </style>
-    <script src="/static/app.js?v=20260117_0715"></script>
+    <script src="/static/app.js?v=20260117_0800"></script>
     <script>
         // EMERGENCY FIX & LOGIC V3
         (function () {

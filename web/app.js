@@ -268,6 +268,7 @@ function updateDashboard() {
         .then(data => {
             const decisionMap = buildDecisionMap(data.decision, data.decision_history);
             const currentDecision = normalizeDecision(decisionMap, data.system) || data.decision_history?.[0] || null;
+            window.latestDecisionHistory = Array.isArray(data.decision_history) ? data.decision_history : [];
             renderSystemStatus(data.system);
             renderMarketData(data.market);
             renderAgents(data.agents);
@@ -1019,7 +1020,8 @@ function updateAgentFramework(system, decision, agents) {
     const voteAnalysis = decision?.vote_analysis || {};
     const adxFallback = decision?.regime?.adx ?? decision?.four_layer_status?.adx;
 
-    const resetFramework = () => {
+    const resetFramework = (options = {}) => {
+        const { forceRunning = false } = options;
         const outputIds = [
             'out-5m', 'out-15m', 'out-1h', 'out-oi',
             'out-selector-mode', 'out-selector-symbol', 'out-selector-score',
@@ -1069,8 +1071,9 @@ function updateAgentFramework(system, decision, agents) {
         const setIdleOrOff = (id, key, summaryId, idleText, offText, runningText) => {
             const enabled = key ? isEnabled(key) : true;
             if (enabled) {
-                setAgentStatus(id, isRunningMode ? 'Running' : 'Idle');
-                setSummary(summaryId, isRunningMode ? runningText : idleText);
+                const showRunning = forceRunning && isRunningMode;
+                setAgentStatus(id, showRunning ? 'Running' : 'Idle');
+                setSummary(summaryId, showRunning ? runningText : idleText);
             } else {
                 setAgentStatus(id, 'Off');
                 setSummary(summaryId, offText);
@@ -1113,16 +1116,43 @@ function updateAgentFramework(system, decision, agents) {
 
     if (hasCycle && window.lastFrameworkCycle !== currentCycle) {
         window.lastFrameworkCycle = currentCycle;
+        if (window.frameworkCycleTimer) {
+            clearTimeout(window.frameworkCycleTimer);
+        }
+        resetFramework({ forceRunning: true });
+        window.frameworkCycleTimer = setTimeout(() => {
+            if (window.lastFrameworkCycle === currentCycle && window.lastDecisionCycle !== currentCycle) {
+                resetFramework({ forceRunning: false });
+            }
+        }, 1000);
         if (!decisionIsCurrent) {
-            resetFramework();
             return;
         }
     }
 
     // Update Agent Statuses and Outputs based on decision data
     if (!decision || (hasCycle && decisionHasCycle && !decisionIsCurrent)) {
-        resetFramework();
-        return;
+        if (hasCycle && window.latestDecisionHistory && window.latestDecisionHistory.length > 0) {
+            const fallbackDecision = window.latestDecisionHistory.find(
+                (entry) => entry && entry.cycle_number !== undefined && Number(entry.cycle_number) === Number(currentCycle)
+            );
+            if (fallbackDecision) {
+                decision = fallbackDecision;
+            } else {
+                resetFramework({ forceRunning: false });
+                return;
+            }
+        } else {
+            resetFramework({ forceRunning: false });
+            return;
+        }
+    }
+
+    if (hasCycle) {
+        const resolvedCycle = decision?.cycle_number !== undefined && decision?.cycle_number !== null
+            ? Number(decision.cycle_number)
+            : Number(currentCycle);
+        window.lastDecisionCycle = resolvedCycle;
     }
 
     // DataSync Agent - Always show as completed when we have data
