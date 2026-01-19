@@ -7,6 +7,8 @@ LLM 策略推理引擎 (Multi-Provider Support)
 import json
 import re
 from typing import Dict, Optional
+import os
+import httpx
 from src.config import config
 from src.utils.logger import log
 from src.strategy.llm_parser import LLMOutputParser
@@ -59,7 +61,8 @@ class StrategyEngine:
     def __init__(self):
         # 获取 LLM 配置
         llm_config = config.llm
-        provider = llm_config.get('provider', 'deepseek')
+        provider = llm_config.get('provider') or os.getenv('LLM_PROVIDER', 'none')
+        self.disable_llm = False
         
         # 获取对应提供商的 API Key
         api_keys = llm_config.get('api_keys', {})
@@ -85,6 +88,12 @@ class StrategyEngine:
 
         self.client = None
         self.is_ready = False
+
+        disable_env = os.getenv('LLM_DISABLED', '').lower() in ('1', 'true', 'yes', 'on')
+        if provider.lower() in ('none', 'disabled', 'off') or disable_env:
+            self.disable_llm = True
+            log.info("🚫 Strategy Engine LLM disabled by config")
+            return
         
         if api_key:
             self._init_client(api_key, llm_config)
@@ -112,9 +121,17 @@ class StrategyEngine:
         """Reload configuration from global config"""
         # Re-fetch config
         llm_config = config.llm
-        provider = llm_config.get('provider', 'deepseek')
+        provider = llm_config.get('provider') or os.getenv('LLM_PROVIDER', 'none')
         api_keys = llm_config.get('api_keys', {})
         api_key = api_keys.get(provider) or config.deepseek.get('api_key')
+
+        disable_env = os.getenv('LLM_DISABLED', '').lower() in ('1', 'true', 'yes', 'on')
+        if provider.lower() in ('none', 'disabled', 'off') or disable_env:
+            self.disable_llm = True
+            self.is_ready = False
+            self.client = None
+            log.info("🚫 Strategy Engine LLM disabled by config (reload)")
+            return False
         
         if api_key:
             self.provider = provider
@@ -134,6 +151,9 @@ class StrategyEngine:
         Returns:
             决策结果字典
         """
+        if self.disable_llm:
+            return self._get_fallback_decision(market_context_data)
+
         # Ensure client is initialized
         if not self.is_ready:
             if not self.reload_config():
@@ -222,6 +242,16 @@ class StrategyEngine:
             
             return decision
             
+        except httpx.HTTPStatusError as e:
+            if e.response is not None and e.response.status_code in (401, 402, 403):
+                self.disable_llm = True
+                self.is_ready = False
+                self.client = None
+                log.error(f"LLM decision failed: {e} (LLM disabled)")
+            else:
+                log.error(f"LLM decision failed: {e}")
+            # 返回保守决策
+            return self._get_fallback_decision(market_context_data)
         except Exception as e:
             log.error(f"LLM decision failed: {e}")
             # 返回保守决策

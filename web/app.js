@@ -2642,7 +2642,7 @@ async function loadSettings() {
         setIfExists('cfg-gemini-key', config.api_keys.gemini_api_key);
 
         // LLM Provider Selection
-        const llmProvider = config.llm?.provider || 'deepseek';
+        const llmProvider = config.llm?.provider || 'none';
         setIfExists('cfg-llm-provider', llmProvider);
 
         // Trigger provider change to show correct API key field

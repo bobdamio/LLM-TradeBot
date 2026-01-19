@@ -46,7 +46,7 @@ class ConfigManager:
                 "run_mode": env_vars.get('RUN_MODE', 'test')
             },
             "llm": {
-                "provider": env_vars.get('LLM_PROVIDER', 'deepseek'),
+                "provider": env_vars.get('LLM_PROVIDER', 'none'),
                 "model": env_vars.get('DEEPSEEK_MODEL', 'deepseek-chat')
             },
             "agents": self._get_agents_config()
