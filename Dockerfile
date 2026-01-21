@@ -3,9 +3,9 @@ FROM python:3.11-slim-bullseye
 
 # Set environment variables
 # PREVENT Python from writing pyc files to disc
-ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONDONTWRITEBYTECODE=1
 # PREVENT Python from buffering stdout and stderr
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 
 # Set the working directory to /app
 WORKDIR /app
