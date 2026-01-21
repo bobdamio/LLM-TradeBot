@@ -287,5 +287,3 @@ python main.py --mode continuous
 ```
 
 > **WARNING**: This mode executes real trades on Binance Futures!
-
-can we push now?
