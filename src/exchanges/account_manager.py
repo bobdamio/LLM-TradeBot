@@ -288,7 +288,8 @@ class AccountManager:
         # Fallback to legacy env vars if this is the first/default account
         if not api_key and account_id in ['main', 'default', 'main-binance']:
             api_key = os.environ.get('BINANCE_API_KEY', '')
-            secret_key = os.environ.get('BINANCE_SECRET_KEY', '')
+            # Support both BINANCE_API_SECRET (preferred) and BINANCE_SECRET_KEY (legacy)
+            secret_key = os.environ.get('BINANCE_API_SECRET') or os.environ.get('BINANCE_SECRET_KEY', '')
         
         return ExchangeAccount(
             id=account_id,
