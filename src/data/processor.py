@@ -490,7 +490,7 @@ class MarketDataProcessor:
         # returns & log returns
         features['return_pct'] = df_checked['close'].pct_change(fill_method=None) * 100
         # 替换由除以0产生的 inf
-        features['return_pct'].replace([np.inf, -np.inf], np.nan, inplace=True)
+        features['return_pct'] = features['return_pct'].replace([np.inf, -np.inf], np.nan)
         # log on zeros will produce -inf; protect by replacing non-positive with NaN first
         safe_close = df_checked['close'].where(df_checked['close'] > 0)
         features['log_return'] = np.log(safe_close).diff()
