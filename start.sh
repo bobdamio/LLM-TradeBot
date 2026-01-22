@@ -85,9 +85,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Default to test mode with continuous
+# Default to production mode (real Binance testnet) unless --test is explicitly passed
 if [ -z "$TEST_MODE" ]; then
-    TEST_MODE="--test"
+    TEST_MODE=""
 fi
 
 if [ -z "$RUN_MODE" ]; then
@@ -96,8 +96,14 @@ fi
 
 # Start the application
 echo ""
-print_info "Starting LLM-TradeBot..."
-print_info "Mode: $TEST_MODE $RUN_MODE"
+if [ -z "$TEST_MODE" ]; then
+    print_success "Starting LLM-TradeBot in PRODUCTION mode (Real Binance Testnet Account)"
+    print_info "Using actual testnet balance and trading real orders"
+else
+    print_warning "Starting LLM-TradeBot in TEST mode (Virtual $1000 Simulator)"
+    print_info "Using simulated account, no real orders"
+fi
+print_info "Run Mode: $RUN_MODE"
 echo ""
 print_success "Dashboard will be available at: http://localhost:8000"
 echo ""
