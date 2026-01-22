@@ -9,8 +9,8 @@ import pytest
 from src.data.processor import MarketDataProcessor
 
 
-def make_base_df(n=60, start_price=10000.0, freq='5T'):
-    idx = pd.date_range(end=pd.Timestamp.utcnow().floor('T'), periods=n, freq=freq)
+def make_base_df(n=60, start_price=10000.0, freq='5min'):
+    idx = pd.date_range(end=pd.Timestamp.utcnow().floor('min'), periods=n, freq=freq)
     prices = start_price + np.cumsum(np.random.randn(n)) * 10
     vols = np.abs(np.random.randn(n) * 100)
     df = pd.DataFrame({

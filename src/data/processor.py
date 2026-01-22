@@ -428,7 +428,7 @@ class MarketDataProcessor:
 
         start = df.index.min()
         end = df.index.max()
-        full_index = pd.date_range(start=start, end=end, freq=f'{freq_minutes}T')
+        full_index = pd.date_range(start=start, end=end, freq=f'{freq_minutes}min')
         df_re = df.reindex(full_index)
 
         # 尝试推断对象类型为数值，减少 future warning
