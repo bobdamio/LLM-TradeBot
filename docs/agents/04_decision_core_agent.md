@@ -163,7 +163,7 @@ allow_short = pct > 30  # 低位禁止做空
 DecisionCoreAgent
 ├── SignalWeight (权重配置)
 ├── PositionAnalyzer (src/agents/position_analyzer.py)
-├── RegimeDetector (src/agents/regime_detector.py)
+├── RegimeDetector (src/agents/regime_detector_agent.py)
 └── VoteResult (输出结构)
 ```
 
